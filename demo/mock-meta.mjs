@@ -21,21 +21,35 @@ export function createMockMetaServer({ deriveSequence = ["valid", "invalid", "da
     let body = "";
     for await (const chunk of req) body += chunk;
     const request = JSON.parse(body);
-    const isDerive = request.max_tokens === 60;
+    const isDerive = request.messages?.[0]?.content?.includes("regular expression");
     const mode = isDerive ? deriveSequence[Math.min(deriveIndex++, deriveSequence.length - 1)] : "find";
-    calls.push({ request, mode });
+    calls.push({ request, mode, bodyBytes: Buffer.byteLength(body, "utf8") });
     // Failure simulation: "error" derives or find.status -> HTTP error with no usable body.
     const status = isDerive ? (mode === "error" ? 500 : 200) : (find.status ?? 200);
+    // find.rawBody -> 200 with an unparseable body, to exercise client-side
+    // JSON/transport exception handling.
+    if (!isDerive && find.rawBody != null) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(find.rawBody);
+      return;
+    }
     if (status !== 200) {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: { message: "simulated failure" } }));
       return;
     }
-    const content = isDerive ? DERIVE_RESPONSES[mode] : (find.content ?? "$100.05");
+    // A reasoning model starved by a tiny output cap returns empty content:
+    // all completion tokens go to reasoning. Encode the live finding.
+    const starved = (request.max_tokens ?? 0) < 200;
+    const content = starved ? "" : (isDerive ? DERIVE_RESPONSES[mode] : (find.content ?? "$100.05"));
     const omitUsage = isDerive ? mode === "no-usage" : !!find.omitUsage;
-    const usage = omitUsage ? undefined : (isDerive
-      ? { prompt_tokens: 120, completion_tokens: 12, total_tokens: 132 }
-      : { prompt_tokens: 80, completion_tokens: 4, total_tokens: 84 });
+    const completion = isDerive ? (starved ? request.max_tokens : 12) : (starved ? request.max_tokens : 4);
+    const prompt = isDerive ? 120 : 80;
+    const usage = omitUsage ? undefined : {
+      prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion,
+      completion_tokens_details: { reasoning_tokens: starved ? completion - 1 : Math.min(2, completion) },
+      prompt_tokens_details: { cached_tokens: 0 },
+    };
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
       model: "muse-ember-1.0",

@@ -3,7 +3,7 @@ import { deriveRegexWithEmber, findBalanceWithEmber } from "../ember/client.js";
 import { extractWithPattern, validatePattern } from "./regexcheck.js";
 import { parseBalance } from "./parse.js";
 
-export async function learnPattern({ settings, label, trainingText, call = deriveRegexWithEmber }) {
+export async function learnPattern({ settings, label, trainingText, call = deriveRegexWithEmber, preSend }) {
   if (!settings?.emberEnabled || !settings.apiKey) return { ok: false, reason: "ember-disabled" };
   const expected = parseBalance(trainingText);
   const ai = await call({
@@ -11,6 +11,7 @@ export async function learnPattern({ settings, label, trainingText, call = deriv
     apiKey: settings.apiKey,
     label,
     sampleText: trainingText,
+    preSend,
   });
   if (!ai.ok) return ai;
   const check = validatePattern(ai.pattern, trainingText, expected.ok ? expected.value : null);
@@ -18,7 +19,7 @@ export async function learnPattern({ settings, label, trainingText, call = deriv
   return { ok: true, pattern: check.pattern, trace: ai.trace };
 }
 
-export async function readWithFallback({ text, pageText, getPageText, pattern, settings, label, call = findBalanceWithEmber }) {
+export async function readWithFallback({ text, pageText, getPageText, pattern, settings, label, call = findBalanceWithEmber, preSend }) {
   if (pattern) {
     const learned = extractWithPattern(text, pattern);
     if (learned.ok) return { ok: true, source: "pattern", parsed: learned };
@@ -29,7 +30,7 @@ export async function readWithFallback({ text, pageText, getPageText, pattern, s
     return { ok: false, reason: "unparseable" };
   }
   const sample = typeof getPageText === "function" ? await getPageText() : pageText;
-  const ai = await call({ apiBase: settings.apiBase, apiKey: settings.apiKey, label, pageText: sample });
+  const ai = await call({ apiBase: settings.apiBase, apiKey: settings.apiKey, label, pageText: sample, preSend });
   if (!ai.ok) return ai;
   const fallback = parseBalance(ai.text);
   return fallback.ok

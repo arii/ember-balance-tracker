@@ -1,3 +1,5 @@
 node_modules/
 test/artifacts/
 .DS_Store
+scripts/live-ledger.json
+scripts/live-ledger.json.lock/

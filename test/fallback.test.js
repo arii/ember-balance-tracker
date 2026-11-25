@@ -56,10 +56,13 @@ test("every mock call yields complete proof-of-usage trace and cumulative budget
     ["muse-ember-1.0", 120, 12, 0.000018],
     ["muse-ember-1.0", 80, 4, 0.00001],
   ]);
-  assert.deepEqual(summarizeTrace(trace), {
-    calls: 2, failedCalls: 0, promptTokens: 200, completionTokens: 16, totalTokens: 216,
-    costUsd: 0.000028, usageIncomplete: false, withinBudget: true,
+  const summary = summarizeTrace(trace);
+  assert.deepEqual({ ...summary, costUsd: undefined }, {
+    calls: 2, failedCalls: 0, pendingReservations: 0, promptTokens: 200, completionTokens: 16, totalTokens: 216,
+    costUsd: undefined, usageIncomplete: false, withinBudget: true,
   });
+  // Unrounded authorization sum (float); exact cent figures belong to display.
+  assert.ok(Math.abs(summary.costUsd - 0.000028) < 1e-12, `cost ${summary.costUsd}`);
   const exported = JSON.parse(JSON.stringify(trace));
   assert.equal(exported.length, mock.calls.length);
   for (const entry of exported) {
@@ -126,4 +129,96 @@ test("successful call with missing usage is traced as unknown, not zero-cost", a
   assert.equal(derive.trace.usageKnown, false);
   assert.equal(derive.trace.costUsd, null);
   assert.equal(derive.trace.promptTokens, null);
+});
+
+test("preSend denial blocks both derive and fallback before any API traffic, with no trace", async (t) => {
+  const mock = createMockMetaServer({ deriveSequence: ["valid"] });
+  const apiBase = await mock.listen();
+  t.after(() => mock.close());
+  const deny = async () => ({ allowed: false, reason: "budget-exceeded" });
+  const settings = { emberEnabled: true, apiKey: "local-test-only", apiBase, allowPageText: true };
+  const learned = await learnPattern({ settings, label: "x", trainingText: "$100.05", preSend: deny });
+  assert.equal(learned.ok, false); assert.equal(learned.reason, "budget-exceeded");
+  assert.equal(learned.trace, undefined, "a denied call never reached the API: no usage trace");
+  const read = await readWithFallback({ text: "no numbers", pattern: null, settings, label: "x", pageText: "text", preSend: deny });
+  assert.equal(read.ok, false); assert.equal(read.reason, "budget-exceeded");
+  assert.equal(read.trace, undefined);
+  assert.equal(mock.calls.length, 0, "no HTTP call may happen once the gate denies");
+});
+
+test("deterministic reads keep working when the AI budget denies", async () => {
+  const deny = async () => ({ allowed: false, reason: "budget-exceeded" });
+  const settings = { emberEnabled: true, apiKey: "k", allowPageText: true };
+  const dom = await readWithFallback({ text: "Balance $100.05", pattern: null, settings, label: "x", pageText: "t", preSend: deny });
+  assert.equal(dom.ok, true); assert.equal(dom.source, "dom");
+  const pattern = await readWithFallback({ text: "Balance $100.05", pattern: String.raw`\$([\d.]+)`, settings, label: "x", pageText: "t", preSend: deny });
+  assert.equal(pattern.ok, true); assert.equal(pattern.source, "pattern");
+});
+
+test("preSend sees the exact serialized request body bytes", async (t) => {
+  const mock = createMockMetaServer({});
+  const apiBase = await mock.listen();
+  t.after(() => mock.close());
+  let seen;
+  const measure = async ({ bodyBytes, maxTokens }) => { seen = { bodyBytes, maxTokens }; return { allowed: true, reservationId: "r1" }; };
+  const r = await findBalanceWithEmber({ apiBase, apiKey: "local-test-only", label: "balance", pageText: "Balance $100.05", preSend: measure });
+  assert.equal(r.ok, true);
+  assert.equal(seen.bodyBytes, mock.calls[0].bodyBytes, "reservation bound is the actual serialized body, not an estimate");
+  assert.equal(seen.maxTokens, 1000);
+  assert.equal(r.trace.reservationId, "r1", "the actual trace settles the reservation it was charged against");
+});
+
+test("label is capped so user input cannot blow up the bounded body", async (t) => {
+  const mock = createMockMetaServer({});
+  const apiBase = await mock.listen();
+  t.after(() => mock.close());
+  const huge = "x".repeat(100000);
+  const r = await findBalanceWithEmber({ apiBase, apiKey: "local-test-only", label: huge, pageText: "Balance $100.05" });
+  assert.equal(r.ok, true);
+  assert.ok(mock.calls[0].bodyBytes < 20000, `body stayed bounded with a 100k-char label: ${mock.calls[0].bodyBytes}`);
+});
+
+test("production background gates only the model HTTP path", async () => {
+  const src = await readFile(new URL("../src/background.js", import.meta.url), "utf8");
+  assert.ok(!src.includes("emberCallWithBudget"), "the old whole-read wrapper is gone");
+  // derive and fallback both wire the gate as preSend...
+  const deriveBody = src.slice(src.indexOf("async function derivePattern"), src.indexOf("async function recordReading"));
+  assert.match(deriveBody, /preSend: reserveForSend/);
+  assert.match(deriveBody, /settleReservation\(learned, \{ trackerId, purpose: "derive-regex" \}\)/);
+  const readBody = src.slice(src.indexOf("async function readTracker"));
+  assert.match(readBody, /preSend: reserveForSend/);
+  assert.match(readBody, /settleReservation\(result, \{ trackerId \}\)/);
+  // ...and readWithFallback is called directly, so DOM/pattern reads never
+  // touch the budget gate.
+  assert.match(readBody, /await readWithFallback\(\{/);
+});
+
+test("reasoning-model starvation: tiny output caps yield model-none, production caps have headroom", async (t) => {
+  const mock = createMockMetaServer({});
+  const apiBase = await mock.listen();
+  t.after(() => mock.close());
+  // Simulated live finding (first real call, Nov 24): a 32-token output cap
+  // is fully consumed by reasoning and the content comes back empty.
+  const res = await fetch(`${apiBase}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer local-test-only" },
+    body: JSON.stringify({ model: "muse-ember-1.0", messages: [{ role: "user", content: "Balance $100.05" }], max_tokens: 32 }),
+  });
+  const starved = await res.json();
+  assert.equal(starved.choices[0].message.content, "");
+  assert.equal(starved.usage.completion_tokens, 32, "reasoning consumed the whole cap");
+  // The production client's caps are above the starvation threshold.
+  const clientSrc = await readFile(new URL("../src/ember/client.js", import.meta.url), "utf8");
+  const caps = [...clientSrc.matchAll(/maxTokens: (\d+)/g)].map((m) => Number(m[1]));
+  assert.ok(caps.length >= 2 && caps.every((c) => c >= 1000), `production output caps ${caps} must leave reasoning headroom`);
+});
+
+test("client sets reasoning_effort low and the trace records reasoning tokens", async (t) => {
+  const mock = createMockMetaServer({ deriveSequence: ["valid"] });
+  const apiBase = await mock.listen();
+  t.after(() => mock.close());
+  const derive = await deriveRegexWithEmber({ apiBase, apiKey: "local-test-only", label: "balance", sampleText: "$100.05" });
+  assert.equal(derive.ok, true);
+  assert.equal(mock.calls[0].request.reasoning_effort, "low", "direct-answer tasks must not run at the 'max' default");
+  assert.equal(typeof derive.trace.reasoningTokens, "number", "billed reasoning tokens are part of the honest trace");
 });
