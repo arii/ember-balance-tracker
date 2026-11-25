@@ -28,6 +28,8 @@
     <input id="apiBase" type="text" placeholder="https://api.meta.com/v1" />
     <label for="apiKey">API key (stored only in this browser)</label>
     <input id="apiKey" type="password" autocomplete="off" />
+    <label for="maxSpend">Hard spend cap (USD). No Ember call is made at or over this total.</label>
+    <input id="maxSpend" type="text" inputmode="decimal" placeholder="2" />
     <button id="save" type="button">Save</button><span id="saved"></span>
 
     <h2>Usage trace</h2>
