@@ -1,4 +1,4 @@
-// E2E: real Chrome, real extension pages, real training/read flow on the demo site.
+// E2E: real Chrome, real extension pages, classic-script picker/read on a demo site.
 // Usage: node test/e2e.mjs   (screenshots land in test/artifacts/)
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
@@ -42,7 +42,7 @@ try {
   await page.setViewport({ width: 900, height: 650 });
   await page.goto("http://127.0.0.1:8797/", { waitUntil: "load" });
   await page.evaluate(() => { window.__ebtSelectorUrl = "/ext/src/lib/selector.js"; });
-  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js"), type: "module" });
+  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js") });
   await page.waitForFunction("window.__ebt !== undefined", { timeout: 10000 });
 
   const picking = page.evaluate(() => window.__ebt.startTraining());
@@ -64,13 +64,13 @@ try {
 
   // 5. Fixtures: redesign is honest about a stale selector; ambiguity stays scoped to the taught element.
   await page.goto("http://127.0.0.1:8797/redesigned.html", { waitUntil: "load" });
-  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js"), type: "module" });
+  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js") });
   await page.waitForFunction("window.__ebt !== undefined", { timeout: 10000 });
   const redesigned = await page.evaluate(() => window.__ebt.readAt("#balance"));
   check("redesign reports cannot-find/re-teach state", redesigned?.ok === false && redesigned.reason === "selector-not-found");
 
   await page.goto("http://127.0.0.1:8797/ambiguous.html", { waitUntil: "load" });
-  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js"), type: "module" });
+  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js") });
   await page.waitForFunction("window.__ebt !== undefined", { timeout: 10000 });
   const ambiguous = await page.evaluate(() => window.__ebt.readAt("#labeled-balance"));
   check("ambiguous page reads only the user-labeled element", ambiguous?.ok === true && ambiguous.text === "$100.05", JSON.stringify(ambiguous));
