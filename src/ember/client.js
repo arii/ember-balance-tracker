@@ -10,6 +10,20 @@ import { makeTraceEntry } from "../lib/trace.js";
 export const DEFAULT_API_BASE = "https://api.meta.ai/v1";
 export const DEFAULT_MODEL = "muse-ember-1.0";
 
+// Hard input cap: a sanity limit on request size (the background guard's
+// reservation is priced from the official context-window bound, not from
+// body bytes - Meta documents no tokens-per-byte ratio).
+// muse-ember-1.0 is a reasoning model whose completion_tokens include its
+// private reasoning, and whose DEFAULT reasoning_effort is "max" - first live
+// contact deliberated away the whole output cap and returned content: null
+// (finish_reason: "length"). These tasks are direct-answer lookups, for which
+// the docs prescribe "low" (dev.meta.ai/docs/reasoning). The remaining caps
+// are headroom for the answer plus light reasoning, not deliberation room.
+export const MAX_INPUT_CHARS = 4000;
+export const MAX_LABEL_CHARS = 200; // user-entered; capped so prompts stay bounded
+const capInput = (s) => (typeof s === "string" && s.length > MAX_INPUT_CHARS ? s.slice(0, MAX_INPUT_CHARS) : s);
+const capLabel = (s) => (typeof s === "string" && s.length > MAX_LABEL_CHARS ? s.slice(0, MAX_LABEL_CHARS) : s);
+
 const PROMPT = (label, pageText) => [
   {
     role: "system",
@@ -19,7 +33,7 @@ const PROMPT = (label, pageText) => [
   },
   {
     role: "user",
-    content: `The user tracks "${label}". Page text:\n\n${pageText}`,
+    content: `The user tracks "${capLabel(label)}". Page text:\n\n${capInput(pageText)}`,
   },
 ];
 
@@ -34,41 +48,55 @@ const REGEX_PROMPT = (label, sampleText) => [
   },
   {
     role: "user",
-    content: `The user tracks "${label}". Example page text containing the current value:\n\n${sampleText}`,
+    content: `The user tracks "${capLabel(label)}". Example page text containing the current value:\n\n${capInput(sampleText)}`,
   },
 ];
 
-// Shared transport. On failure returns a reason + HTTP status only: the error
-// body is never read into the result, and the API key never leaves the header.
-async function chat({ apiBase, apiKey, messages, maxTokens }) {
+// Shared transport. The exact request body is serialized FIRST and measured;
+// the injected preSend gate (the background budget guard) sees the real
+// UTF-8 byte count and output cap before any request leaves, and a denial
+// means no HTTP happens at all. On failure returns a reason + HTTP status
+// only: the error body is never read into the result, and the API key never
+// leaves the header.
+async function chat({ apiBase, apiKey, messages, maxTokens, preSend }) {
+  const body = JSON.stringify({ model: DEFAULT_MODEL, messages, max_tokens: maxTokens, temperature: 0, reasoning_effort: "low" });
+  const bodyBytes = new TextEncoder().encode(body).length;
+  let reservationId = null;
+  if (preSend) {
+    const gate = await preSend({ bodyBytes, maxTokens });
+    if (!gate.allowed) return { ok: false, reason: gate.reason || "budget-denied", status: null, budget: gate, noRequest: true };
+    reservationId = gate.reservationId ?? null;
+  }
   let res;
   try {
     res = await fetch(`${apiBase.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: DEFAULT_MODEL, messages, max_tokens: maxTokens, temperature: 0 }),
+      body,
     });
   } catch {
-    return { ok: false, reason: "network-error", status: null };
+    return { ok: false, reason: "network-error", status: null, reservationId };
   }
-  if (!res.ok) return { ok: false, reason: `http-${res.status}`, status: res.status };
+  if (!res.ok) return { ok: false, reason: `http-${res.status}`, status: res.status, reservationId };
   const data = await res.json();
-  return { ok: true, text: data?.choices?.[0]?.message?.content?.trim() || "", usage: data?.usage };
+  return { ok: true, text: data?.choices?.[0]?.message?.content?.trim() || "", usage: data?.usage, reservationId };
 }
 
+// A trace exists IFF a request was actually sent. Budget-denied calls carry
+// noRequest and produce no trace entry - they never reached the API.
 const traceFor = (label, r) =>
-  makeTraceEntry(r.ok
-    ? { label, model: DEFAULT_MODEL, usage: r.usage }
-    : { label, model: DEFAULT_MODEL, ok: false, status: r.status, error: r.reason });
+  r.noRequest ? undefined : makeTraceEntry(r.ok
+    ? { label, model: DEFAULT_MODEL, usage: r.usage, reservationId: r.reservationId }
+    : { label, model: DEFAULT_MODEL, ok: false, status: r.status, error: r.reason, reservationId: r.reservationId });
 
 /**
  * Training-time step (per the extension's click-to-train design): ask Muse
  * Ember once how to extract the amount, as a deterministic regex usable for
  * later reads without AI calls.
  */
-export async function deriveRegexWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, sampleText }) {
+export async function deriveRegexWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, sampleText, preSend }) {
   if (!apiKey) return { ok: false, reason: "no-api-key" };
-  const r = await chat({ apiBase, apiKey, messages: REGEX_PROMPT(label, sampleText), maxTokens: 60 });
+  const r = await chat({ apiBase, apiKey, messages: REGEX_PROMPT(label, sampleText), maxTokens: 2000, preSend });
   const trace = traceFor(label, r);
   if (!r.ok) return { ok: false, reason: r.reason, trace };
   const pattern = r.text.replace(/^`+|`+$/g, "").trim();
@@ -76,9 +104,9 @@ export async function deriveRegexWithEmber({ apiBase = DEFAULT_API_BASE, apiKey,
   return { ok: true, pattern, trace };
 }
 
-export async function findBalanceWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, pageText }) {
+export async function findBalanceWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, pageText, preSend }) {
   if (!apiKey) return { ok: false, reason: "no-api-key" };
-  const r = await chat({ apiBase, apiKey, messages: PROMPT(label, pageText), maxTokens: 32 });
+  const r = await chat({ apiBase, apiKey, messages: PROMPT(label, pageText), maxTokens: 1000, preSend });
   const trace = traceFor(label, r);
   if (!r.ok) return { ok: false, reason: r.reason, trace };
   if (!r.text || /^NONE\b/i.test(r.text)) return { ok: false, reason: "model-none", trace };
