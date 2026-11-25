@@ -1,4 +1,5 @@
 // Popup: train a new tracker on the active tab, read existing trackers.
+import { summarizeTrace } from "../lib/trace.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -47,7 +48,7 @@ async function render() {
     actions.append(readBtn, delBtn);
     const meta = document.createElement("span");
     meta.className = "t-meta";
-    meta.textContent = `${t.urlPattern} · ${fmtReading(t)}`;
+    meta.textContent = `${t.urlPattern} · ${fmtReading(t)}${t.pattern ? " · Ember rule ✓" : ""}`;
     li.append(label, actions, meta);
     list.appendChild(li);
   }
@@ -58,7 +59,17 @@ async function readTracker(t) {
   const tab = await activeTab();
   if (!tab?.id) return status("No active tab.", true);
   if (!tab.url?.startsWith(t.urlPattern)) {
-    return status(`Open ${t.urlPattern} first (sign in if needed), then read again.`, true);
+    // Find the dashboard's already-open tab instead of making the user hunt
+    // for it. Page access still needs a click on that tab (activeTab grants
+    // cover only the tab the extension was invoked on), so switch there and
+    // ask for one more click; the notice below survives the popup closing.
+    const tabs = await chrome.tabs.query({});
+    const found = tabs.find((x) => x.url?.startsWith(t.urlPattern));
+    if (!found?.id) return status(`Open ${t.urlPattern} first (sign in if needed), then read again.`, true);
+    await chrome.storage.session.set({ ebtNotice: `Found your ${t.label} tab — click "Read now" to read it.` });
+    await chrome.tabs.update(found.id, { active: true });
+    if (found.windowId !== undefined) await chrome.windows.update(found.windowId, { focused: true }).catch(() => {});
+    return;
   }
   const res = await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: t.id, tabId: tab.id });
   if (res?.ok) {
@@ -83,4 +94,30 @@ $("#train-btn").addEventListener("click", async () => {
   window.close();
 });
 
+async function renderEmberLine() {
+  const line = $("#ember-line");
+  const { settings } = await chrome.storage.local.get("settings");
+  const { emberTrace } = await chrome.storage.local.get("emberTrace");
+  const s = summarizeTrace(emberTrace || []);
+  const spend = s.calls
+    ? ` · ${s.calls} call${s.calls === 1 ? "" : "s"}${s.costUsd == null ? " (cost unknown)" : ` · ≈$${s.costUsd.toFixed(6)}`}`
+    : "";
+  line.textContent = settings?.emberEnabled ? `Ember AI: on${spend} · ` : "Ember AI: off (reads are local and free) · ";
+  const link = document.createElement("a");
+  link.href = "#";
+  link.textContent = "Settings";
+  link.addEventListener("click", (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
+  line.appendChild(link);
+}
+
+async function showNotice() {
+  const { ebtNotice } = await chrome.storage.session.get("ebtNotice");
+  if (ebtNotice) {
+    status(ebtNotice);
+    await chrome.storage.session.remove("ebtNotice");
+  }
+}
+
 render();
+renderEmberLine();
+showNotice();

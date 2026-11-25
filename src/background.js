@@ -17,6 +17,17 @@ async function setStore(key, value) {
   await chrome.storage.local.set({ [key]: value });
 }
 
+// Pending training arm: session storage survives a service worker restart
+// while the user aims, but never persists past the browser session.
+const PENDING_KEY = "pendingTraining"; // {tabId, label, ts} | null
+async function getSession(key, fallback) {
+  const o = await chrome.storage.session.get(key);
+  return o[key] ?? fallback;
+}
+async function setSession(key, value) {
+  await chrome.storage.session.set({ [key]: value });
+}
+
 async function addTracker({ label, selector, url, pattern = null }) {
   const trackers = await getStore(TRACKERS_KEY, []);
   const tracker = {
@@ -124,7 +135,50 @@ async function recordReading(trackerId, reading) {
 }
 
 async function ensureContentScript(tabId) {
-  await chrome.scripting.executeScript({ target: { tabId }, files: ["src/content/content.js"] });
+  // allFrames: balances often render inside iframes (e.g. billing portals),
+  // and a top-frame-only picker can never see clicks in there.
+  await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["src/content/content.js"] });
+}
+
+// Self-contained: serialized into every frame by scripting.executeScript,
+// so these must not close over module scope.
+function readAtFunc(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return { ok: false, reason: "selector-not-found" };
+  const text = (el.innerText || el.textContent || "").trim();
+  if (!text) return { ok: false, reason: "empty" };
+  return { ok: true, text };
+}
+
+function pageTextFunc(maxChars) {
+  const t = (document.body?.innerText || "").replace(/\s+/g, " ").trim();
+  return t.slice(0, maxChars);
+}
+
+// Pure: merge per-frame executeScript results into one read. A hit in any
+// frame wins; otherwise the most informative failure wins. Exported for tests.
+export function pickFrameResult(results) {
+  if (!Array.isArray(results) || results.length === 0) return { ok: false, reason: "no-frames" };
+  for (const r of results) if (r?.result?.ok) return { ok: true, text: r.result.text };
+  const other = results.map((r) => r?.result).find((x) => x && !x.ok && x.reason !== "selector-not-found");
+  if (other) return { ok: false, reason: other.reason || "read-failed" };
+  return { ok: false, reason: "selector-not-found" };
+}
+
+// Pure: combine per-frame visible text for the Ember fallback. A frame's
+// innerText never includes child frames, so concatenation does not duplicate.
+// Exported for tests.
+export function joinFrameTexts(results, maxChars = 4000) {
+  const seen = new Set();
+  let out = "";
+  for (const r of results || []) {
+    const t = typeof r?.result === "string" ? r.result.trim() : "";
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out = out ? out + "\n" + t : t;
+    if (out.length >= maxChars) break;
+  }
+  return out.slice(0, maxChars);
 }
 
 async function readTracker(trackerId, tabId) {
@@ -132,8 +186,17 @@ async function readTracker(trackerId, tabId) {
   const t = trackers.find((x) => x.id === trackerId);
   if (!t) return { ok: false, reason: "unknown-tracker" };
 
-  await ensureContentScript(tabId);
-  const res = await chrome.tabs.sendMessage(tabId, { type: "ebt:read", selector: t.selector });
+  // Read every frame: a only-first-response tabs.sendMessage broadcast could
+  // return another frame's miss, but executeScript reports all frames.
+  let res;
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true }, func: readAtFunc, args: [t.selector],
+    });
+    res = pickFrameResult(results);
+  } catch {
+    return { ok: false, reason: "inject-failed" };
+  }
 
   if (res?.ok) {
     // Deterministic read first, Ember fallback last - the shared, tested
@@ -148,8 +211,10 @@ async function readTracker(trackerId, tabId) {
       preSend: reserveForSend,
       getPageText: async () => {
         if (pageText === undefined) {
-          const sample = await chrome.tabs.sendMessage(tabId, { type: "ebt:page-text" });
-          pageText = sample?.text || "";
+          const samples = await chrome.scripting.executeScript({
+            target: { tabId, allFrames: true }, func: pageTextFunc, args: [4000],
+          }).catch(() => []);
+          pageText = joinFrameTexts(samples, 4000);
         }
         return pageText;
       },
@@ -166,7 +231,7 @@ async function readTracker(trackerId, tabId) {
 
 
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     switch (msg?.type) {
       case "ebt:list":
@@ -176,20 +241,55 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // The popup closes right after arming so the user can click the page;
         // the whole flow completes here in the background.
         (async () => {
-          await ensureContentScript(msg.tabId);
-          const picked = await chrome.tabs.sendMessage(msg.tabId, { type: "ebt:start-training" });
-          if (!picked) return; // user pressed Esc
-          const tracker = await addTracker({ label: msg.label, selector: picked.selector, url: picked.url });
-          await recordReading(tracker.id, {
-            value: parseBalance(picked.text).value, unit: parseBalance(picked.text).unit,
-            raw: picked.text, source: "training",
-          });
-          const derivation = await derivePattern(tracker.id, picked.text);
-          await chrome.tabs.sendMessage(msg.tabId, {
-            type: "ebt:trained", label: msg.label, pattern: derivation.ok ? derivation.pattern : null,
-          }).catch(() => {});
+          const prev = await getSession(PENDING_KEY, null);
+          if (prev && prev.tabId !== msg.tabId) {
+            await chrome.tabs.sendMessage(prev.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+          }
+          await setSession(PENDING_KEY, { tabId: msg.tabId, label: msg.label, ts: Date.now() });
+          try {
+            await ensureContentScript(msg.tabId);
+          } catch {
+            await setSession(PENDING_KEY, null);
+            return;
+          }
+          // Broadcast to every frame; each reports back via ebt:picked /
+          // ebt:pick-cancelled. Only the arm itself is awaited: the worker
+          // may suspend while the user aims, and the session-stored pending
+          // arm survives the restart.
+          const armed = await chrome.tabs.sendMessage(msg.tabId, { type: "ebt:start-training" }).catch(() => null);
+          if (!armed) await setSession(PENDING_KEY, null);
         })();
         sendResponse({ ok: true, armed: true });
+        break;
+      }
+      case "ebt:picked": {
+        const pending = await getSession(PENDING_KEY, null);
+        if (!pending || sender?.tab?.id !== pending.tabId || !msg.picked) {
+          sendResponse({ ok: false, reason: "stale-pick" });
+          break;
+        }
+        await setSession(PENDING_KEY, null);
+        const tracker = await addTracker({ label: pending.label, selector: msg.picked.selector, url: msg.picked.url });
+        await recordReading(tracker.id, {
+          value: parseBalance(msg.picked.text).value, unit: parseBalance(msg.picked.text).unit,
+          raw: msg.picked.text, source: "training",
+        });
+        const derivation = await derivePattern(tracker.id, msg.picked.text);
+        // One toast in the main frame, then disarm every other frame's picker.
+        await chrome.tabs.sendMessage(pending.tabId, {
+          type: "ebt:trained", label: pending.label, pattern: derivation.ok ? derivation.pattern : null,
+        }, { frameId: 0 }).catch(() => {});
+        await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+        sendResponse({ ok: true, trackerId: tracker.id });
+        break;
+      }
+      case "ebt:pick-cancelled": {
+        const pending = await getSession(PENDING_KEY, null);
+        if (pending && sender?.tab?.id === pending.tabId) {
+          await setSession(PENDING_KEY, null);
+          await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+        }
+        sendResponse({ ok: true });
         break;
       }
       case "ebt:add-tracker":

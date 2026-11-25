@@ -10,16 +10,40 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const artifacts = path.join(root, "test", "artifacts");
 await mkdir(artifacts, { recursive: true });
 
-const server = spawn(process.execPath, [path.join(root, "demo", "serve.mjs")], { stdio: "pipe" });
-await new Promise((r) => server.stdout.once("data", r));
+const DEMO_URL = "http://127.0.0.1:8797/";
+const alreadyServing = await fetch(DEMO_URL).then((r) => r.ok).catch(() => false);
+let server = null;
+if (alreadyServing) {
+  console.log("demo server already running, reusing it");
+} else {
+  server = spawn(process.execPath, [path.join(root, "demo", "serve.mjs")], { stdio: "pipe" });
+  let stderr = "";
+  server.stderr.on("data", (d) => { stderr += d; });
+  server.on("exit", (code) => {
+    if (code !== 0 && code !== null) {
+      console.error(`demo server exited early (code ${code}):\n${stderr}`);
+      process.exit(2);
+    }
+  });
+  process.on("exit", () => { try { server.kill(); } catch {} });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`demo server did not start in 10s:\n${stderr}`)), 10000);
+    server.stdout.once("data", () => { clearTimeout(timer); resolve(); });
+    server.once("exit", (code) => { clearTimeout(timer); reject(new Error(`demo server exited (code ${code}):\n${stderr}`)); });
+  });
+}
 
 setTimeout(() => { console.error("E2E global timeout"); process.exit(2); }, 90000).unref();
 
 const browser = await puppeteer.launch({
-  headless: "new",
+  headless: process.env.EBT_HEADFUL ? false : "new",
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || undefined,
+  // Branded Chrome ignores --disable-extensions-except and ships with
+  // puppeteer's --disable-extensions default, so drop that default instead.
+  ignoreDefaultArgs: ["--disable-extensions"],
   args: [
-    `--disable-extensions-except=${root}`,
     `--load-extension=${root}`,
+    "--enable-unsafe-extension-debugging",
     "--no-sandbox",
   ],
 });
@@ -106,6 +130,6 @@ try {
   console.log(failures === 0 ? "ALL E2E CHECKS PASSED" : `${failures} E2E CHECK(S) FAILED`);
 } finally {
   await browser.close();
-  server.kill();
+  if (server) server.kill();
 }
 process.exit(failures ? 1 : 0);

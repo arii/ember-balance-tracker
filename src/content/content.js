@@ -61,12 +61,17 @@ async function onPick(e) {
   done?.resolve({ selector, text, url: location.href, title: document.title });
 }
 
+function cancelTraining() {
+  if (!training) return false;
+  stopTraining();
+  const done = training; training = null;
+  done?.resolve(null);
+  return true;
+}
+
 function onKey(e) {
   if (e.key === "Escape") {
-    stopTraining();
-    const done = training; training = null;
-    done?.resolve(null);
-    toast("Training cancelled.");
+    if (cancelTraining()) toast("Training cancelled.");
   }
 }
 
@@ -103,7 +108,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     switch (msg?.type) {
       case "ebt:start-training":
-        sendResponse(await startTraining());
+        // The background broadcasts this to every frame (balances often
+        // live in iframes) and does not await the pick: each frame reports
+        // back separately, which also survives a service worker restart
+        // while the user aims.
+        sendResponse({ ok: true, armed: true });
+        startTraining().then((picked) => {
+          if (picked) {
+            toast("Balance picked — saving…", 2000);
+            chrome.runtime.sendMessage({ type: "ebt:picked", picked }).catch(() => {});
+          } else {
+            chrome.runtime.sendMessage({ type: "ebt:pick-cancelled" }).catch(() => {});
+          }
+        });
+        break;
+      case "ebt:cancel-training":
+        cancelTraining();
+        sendResponse({ ok: true });
         break;
       case "ebt:read":
         sendResponse(readAt(msg.selector));

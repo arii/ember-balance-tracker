@@ -3,7 +3,7 @@
   "name": "Ember Balance Tracker",
   "version": "0.1.0",
   "description": "Track credit and balance amounts on the pages you already use. Click to teach, read on demand. Optional Muse Ember AI fallback.",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "host_permissions": [],
   "background": { "service_worker": "src/background.js", "type": "module" },
   "action": {

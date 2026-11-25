@@ -14,7 +14,7 @@
     <section id="train">
       <input id="label" type="text" placeholder="Label, e.g. Runware credits" maxlength="60" />
       <button id="train-btn" type="button">Track this balance</button>
-      <p class="hint">On a page where you're already signed in: enter a label, click the button, then click the number on the page.</p>
+      <p class="hint">On a page where you're already signed in: enter a label, click the button, then click the number on the page (inside embedded billing frames too).</p>
     </section>
 
     <section id="trackers">
@@ -25,6 +25,7 @@
 
     <footer>
       <span id="status" role="status"></span>
+      <div id="ember-line" class="hint"></div>
     </footer>
 
     <script type="module" src="popup.js"></script>

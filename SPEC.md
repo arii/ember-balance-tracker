@@ -31,9 +31,11 @@ Principles:
 
 Vanilla JS MV3, zero runtime dependencies, no build step.
 
-- `manifest.json` - permissions: `activeTab`, `storage`, `scripting`. No host permissions.
+- `manifest.json` - permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions.
 - `src/content/content.js` - training picker (hover highlight, click capture, Esc
-  cancel), element reader, visible-text sampler. Injected per user gesture only.
+  cancel), element reader, visible-text sampler. Injected per user gesture only,
+  into all frames: billing numbers often render inside iframes, and a
+  top-frame-only picker can never see clicks in there.
 - `src/background.js` - service worker: tracker CRUD, read orchestration, trace log. The
   training flow completes in the background so the popup can close while the user clicks
   the page.
@@ -57,7 +59,9 @@ Vanilla JS MV3, zero runtime dependencies, no build step.
 - `src/lib/trace.js` - usage and cost math for the trace, with a budget summary.
 
 Read precedence: learned pattern > generic parser on the element text > optional Ember
-call on the page text > "refresh / teach again" prompt.
+call on the page text > "refresh / teach again" prompt. Reads query every frame
+and merge the results (a hit in any frame wins); training arms a picker in every
+frame and the clicked frame reports back.
 
 ## 4. Security and privacy
 

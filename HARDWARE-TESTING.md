@@ -8,8 +8,10 @@ fallback is OFF by default and needs your API key.
 ## Set up (5 min)
 1. git clone https://github.com/arii/ember-balance-tracker && cd ember-balance-tracker
 2. npm install
-3. npm test        # unit: expect 32 passed / 0 failed
+3. npm test        # unit: expect 66 passed / 0 failed
 4. npm run e2e     # real Chrome via puppeteer: expect 9 passed, screenshots in test/artifacts/
+   # If puppeteer's bundled Chrome isn't downloaded, point at system Chrome:
+   # PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome npm run e2e
 
 ## Try the extension itself
 1. chrome://extensions -> Developer mode -> Load unpacked -> pick the repo folder

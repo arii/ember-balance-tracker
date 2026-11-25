@@ -12,6 +12,7 @@ Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hack
 2. Click the extension, enter a label ("Runware credits"), click **Track this balance**,
    then click the number on the page.
 3. Later, click **Read now** to re-read the value. Readings are kept in a local history.
+   If you're on another tab, it finds your dashboard's open tab and switches to it.
 
 If a learned read fails (page changed, session expired), the extension asks you to
 refresh the page or re-teach it.
@@ -36,8 +37,9 @@ API key. Every call is recorded with token usage and estimated cost in a local
 
 ## Privacy
 
-- Permissions: `activeTab`, `storage`, `scripting`. No host permissions, no `cookies`,
-  no `tabs`. Page access starts with your click and ends when you navigate away.
+- Permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions, no
+  `cookies`. `tabs` is only used to find your dashboard's already-open tab when you
+  click Read now; page content is still only read after your click via `activeTab`.
 - Nothing leaves the browser unless you enable the Ember fallback, and then only the
   page's visible text (capped at 4,000 chars) is sent to Meta's API. Never cookies,
   never credentials.
@@ -49,7 +51,7 @@ Zero-dependency vanilla MV3 - no build step; judges read the source as-is.
 
 ```bash
 npm install     # dev tools only (jsdom, puppeteer)
-npm test        # 32 unit tests: parsing, selectors, regex safety, consent, mock API, trace math
+npm test        # 66 unit tests: parsing, selectors, regex safety, consent, mock API, trace math, multi-frame reads
 npm run e2e     # real Chrome: loads the unpacked extension, runs the train/read flow
 npm run demo    # serves demo/index.html (mock billing page) on :8797
 ```
