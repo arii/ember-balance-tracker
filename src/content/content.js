@@ -1,7 +1,7 @@
 // Content script: training picker + on-demand reader.
 // Injected only after a user gesture (popup action) under activeTab.
 // Reads only the visible DOM of this tab: no cookies, no credentials, no storage access.
-// Classic script (no static imports): selector.js is loaded by dynamic import
+// Classic script (no static imports, no import.meta): selector.js is loaded by dynamic import
 // from web_accessible_resources; balance parsing happens in the service worker.
 
 const HIGHLIGHT_CLASS = "ebt-picker-highlight";
@@ -10,7 +10,7 @@ let training = null; // { resolve } while picking
 async function loadSelectorLib() {
   const base = typeof chrome !== "undefined" && chrome.runtime?.getURL
     ? chrome.runtime.getURL("src/lib/selector.js")
-    : window.__ebtSelectorUrl || new URL("../lib/selector.js", import.meta.url).href;
+    : window.__ebtSelectorUrl || new URL("../lib/selector.js", location.href).href;
   const mod = await import(base);
   return mod.getSelector;
 }
