@@ -134,10 +134,31 @@ async function recordReading(trackerId, reading) {
   return t;
 }
 
-async function ensureContentScript(tabId) {
-  // allFrames: balances often render inside iframes (e.g. billing portals),
-  // and a top-frame-only picker can never see clicks in there.
-  await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["src/content/content.js"] });
+// Arm the picker in every reachable frame. allFrames file injection can
+// silently skip subframes (verified in real Chrome: the frame never gets the
+// message listener), so enumerate frames, ping each for the listener, inject
+// by explicit frameId where it is missing (reliable), then arm per frame.
+// Only accessible frames are enumerated; cross-origin frames without host
+// permission remain unsupported. No host permissions are requested here.
+export async function armAllFrames(tabId) {
+  let frames;
+  try {
+    frames = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: () => location.href });
+  } catch {
+    return { armed: false, frameCount: 0 };
+  }
+  let armedCount = 0;
+  for (const f of frames || []) {
+    const listening = await chrome.tabs.sendMessage(tabId, { type: "ebt:read", selector: "body" }, { frameId: f.frameId }).catch(() => null);
+    if (!listening) {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId, frameIds: [f.frameId] }, files: ["src/content/content.js"] });
+      } catch { continue; } // inaccessible frame (e.g. cross-origin)
+    }
+    const r = await chrome.tabs.sendMessage(tabId, { type: "ebt:start-training" }, { frameId: f.frameId }).catch(() => null);
+    if (r?.ok) armedCount++;
+  }
+  return { armed: armedCount > 0, frameCount: (frames || []).length };
 }
 
 // Self-contained: serialized into every frame by scripting.executeScript,
@@ -233,33 +254,22 @@ async function readTracker(trackerId, tabId) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
+    try {
     switch (msg?.type) {
       case "ebt:list":
         sendResponse({ ok: true, trackers: await getStore(TRACKERS_KEY, []) });
         break;
       case "ebt:arm-training": {
-        // The popup closes right after arming so the user can click the page;
-        // the whole flow completes here in the background.
-        (async () => {
-          const prev = await getSession(PENDING_KEY, null);
-          if (prev && prev.tabId !== msg.tabId) {
-            await chrome.tabs.sendMessage(prev.tabId, { type: "ebt:cancel-training" }).catch(() => {});
-          }
-          await setSession(PENDING_KEY, { tabId: msg.tabId, label: msg.label, ts: Date.now() });
-          try {
-            await ensureContentScript(msg.tabId);
-          } catch {
-            await setSession(PENDING_KEY, null);
-            return;
-          }
-          // Broadcast to every frame; each reports back via ebt:picked /
-          // ebt:pick-cancelled. Only the arm itself is awaited: the worker
-          // may suspend while the user aims, and the session-stored pending
-          // arm survives the restart.
-          const armed = await chrome.tabs.sendMessage(msg.tabId, { type: "ebt:start-training" }).catch(() => null);
-          if (!armed) await setSession(PENDING_KEY, null);
-        })();
-        sendResponse({ ok: true, armed: true });
+        // Await arming before acknowledging success. The popup stays open on
+        // failure; session storage survives worker restarts after a real arm.
+        const prev = await getSession(PENDING_KEY, null);
+        if (prev && prev.tabId !== msg.tabId) {
+          await chrome.tabs.sendMessage(prev.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+        }
+        await setSession(PENDING_KEY, { tabId: msg.tabId, label: msg.label, ts: Date.now() });
+        const armResult = await armAllFrames(msg.tabId);
+        if (!armResult.armed) await setSession(PENDING_KEY, null);
+        sendResponse({ ok: armResult.armed, ...armResult, ...(!armResult.armed ? { reason: "no-accessible-frame" } : {}) });
         break;
       }
       case "ebt:picked": {
@@ -312,6 +322,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       default:
         sendResponse({ ok: false, reason: "unknown-message" });
+    }
+    } catch (e) {
+      // Never fail silently: a throwing handler used to leave picks unsaved
+      // with no signal anywhere. Respond with the reason and log it.
+      console.error("ebt handler error", msg?.type, e);
+      try { sendResponse({ ok: false, reason: "handler-error: " + String(e?.message || e) }); } catch {}
     }
   })();
   return true;
