@@ -2,9 +2,11 @@
 
 import { parseBalance } from "./lib/parse.js";
 import { learnPattern, readWithFallback } from "./lib/fallback.js";
+import { budgetAllows, worstCaseCost, TRACE_MODEL, MAX_TIER_BODY_BYTES } from "./lib/trace.js";
 
 const TRACKERS_KEY = "trackers"; // [{id,label,urlPattern,selector,createdAt,history:[{ts,value,unit,raw,source}]}]
-const SETTINGS_KEY = "settings"; // {emberEnabled, apiBase, apiKey}
+const SETTINGS_KEY = "settings"; // {emberEnabled, allowPageText, apiBase, apiKey, maxSpendUsd}
+const DEFAULT_MAX_SPEND_USD = 2; // hard cap approved by the user; editable on the options page
 const TRACE_KEY = "emberTrace"; // [traceEntry]
 
 async function getStore(key, fallback) {
@@ -40,16 +42,75 @@ async function derivePattern(trackerId, trainingText) {
   const trackers = await getStore(TRACKERS_KEY, []);
   const t = trackers.find((x) => x.id === trackerId);
   if (!t) return { ok: false, reason: "unknown-tracker" };
-  const learned = await learnPattern({ settings, label: t.label, trainingText });
-  if (learned.trace) {
-    const trace = await getStore(TRACE_KEY, []);
-    trace.push({ ...learned.trace, trackerId, purpose: "derive-regex" });
-    await setStore(TRACE_KEY, trace);
-  }
+  const learned = await learnPattern({ settings, label: t.label, trainingText, preSend: reserveForSend });
+  await settleReservation(learned, { trackerId, purpose: "derive-regex" });
   if (!learned.ok) return { ok: false, reason: learned.reason, pattern: learned.pattern };
   t.pattern = learned.pattern;
   await setStore(TRACKERS_KEY, trackers);
   return { ok: true, pattern: learned.pattern };
+}
+
+// The service worker is single-threaded; this module-level queue makes
+// check -> reserve and settle read-modify-write cycles atomic across
+// concurrent tracker reads.
+let budgetQueue = Promise.resolve();
+const withBudgetLock = (fn) => {
+  const run = budgetQueue.then(fn);
+  budgetQueue = run.then(() => {}, () => {});
+  return run;
+};
+
+// Budget gate for the ACTUAL model HTTP path only. The client serializes the
+// exact request body first and calls this with its real UTF-8 byte count and
+// output cap, before fetch; a denial means no request is sent. Deterministic
+// DOM/pattern reads never reach this gate and keep working at zero cost when
+// the AI budget is exhausted or unknown. A persisted reservation survives a
+// worker restart and counts at its bounded worst case, so a crashed call
+// fails closed instead of vanishing. Exported for tests.
+export async function reserveForSend({ bodyBytes, maxTokens }) {
+  return withBudgetLock(async () => {
+    if (!Number.isFinite(bodyBytes) || bodyBytes <= 0 || !Number.isFinite(maxTokens) || maxTokens <= 0) {
+      return { allowed: false, reason: "budget-request-invalid" };
+    }
+    if (bodyBytes > MAX_TIER_BODY_BYTES) {
+      // Sanity cap on what we send, not a pricing guarantee: Meta documents
+      // no tokens-per-byte bound, so reservations price at the long-context
+      // rate regardless (see worstCaseCost in trace.js). Refuse, don't reprice.
+      return { allowed: false, reason: "budget-tier-bound-exceeded" };
+    }
+    const settings = await getStore(SETTINGS_KEY, {});
+    const cap = settings.maxSpendUsd ?? DEFAULT_MAX_SPEND_USD;
+    const trace = await getStore(TRACE_KEY, []);
+    const check = budgetAllows(trace, cap); // invalid cap fails closed inside
+    if (!check.allowed) return check;
+    const reservation = worstCaseCost({ maxTokens });
+    if (check.spentUsd + reservation > cap) {
+      return { allowed: false, reason: "budget-exceeded", budget: { ...check, reservation } };
+    }
+    const reservationId = crypto.randomUUID();
+    trace.push({
+      ts: new Date().toISOString(), reservationId, pending: true, reservedUsd: reservation,
+      model: TRACE_MODEL, ok: false, status: null, error: "reservation-pending",
+      usageKnown: false, promptTokens: null, completionTokens: null, totalTokens: null, costUsd: null,
+    });
+    await setStore(TRACE_KEY, trace);
+    return { allowed: true, reservationId, reservedUsd: reservation };
+  });
+}
+
+// After the call: the reservation becomes the actual usage record. Client
+// invariant: a sent request always yields a trace carrying its reservationId,
+// so a traceless result means no request happened and nothing was reserved.
+// Exported for tests.
+export async function settleReservation(result, extra = {}) {
+  if (!result.trace) return;
+  await withBudgetLock(async () => {
+    const trace = await getStore(TRACE_KEY, []);
+    const idx = trace.findIndex((e) => e.pending && e.reservationId === result.trace.reservationId);
+    const entry = { ...result.trace, ...extra };
+    if (idx >= 0) trace[idx] = entry; else trace.push(entry);
+    await setStore(TRACE_KEY, trace);
+  });
 }
 
 async function recordReading(trackerId, reading) {
@@ -84,6 +145,7 @@ async function readTracker(trackerId, tabId) {
       pattern: t.pattern,
       settings,
       label: t.label,
+      preSend: reserveForSend,
       getPageText: async () => {
         if (pageText === undefined) {
           const sample = await chrome.tabs.sendMessage(tabId, { type: "ebt:page-text" });
@@ -92,11 +154,7 @@ async function readTracker(trackerId, tabId) {
         return pageText;
       },
     });
-    if (result.trace) {
-      const trace = await getStore(TRACE_KEY, []);
-      trace.push({ ...result.trace, trackerId });
-      await setStore(TRACE_KEY, trace);
-    }
+    await settleReservation(result, { trackerId });
     if (!result.ok) return result;
     await recordReading(trackerId, { value: result.parsed.value, unit: result.parsed.unit, raw: result.parsed.raw, source: result.source });
     return { ok: true, source: result.source, parsed: result.parsed };
