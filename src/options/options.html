@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ember Balance Tracker options</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; max-width: 560px; margin: 24px auto; padding: 0 16px; color: #111827; }
+      label { display: block; margin: 14px 0 4px; font-weight: 600; }
+      input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; box-sizing: border-box; }
+      button { margin-top: 16px; font: inherit; border: 0; border-radius: 6px; padding: 8px 14px; background: #111827; color: #f9fafb; cursor: pointer; }
+      .note { color: #6b7280; font-size: 13px; }
+      #saved { color: #047857; font-size: 13px; margin-left: 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>Ember Balance Tracker options</h1>
+
+    <h2>Optional Muse Ember AI fallback</h2>
+    <p class="note">
+      Off by default. When a page changes and the saved spot can't be read, the extension can ask
+      Meta's Muse Ember model to find the balance in the page's visible text. Only page text is sent,
+      never cookies or credentials. Every call is logged with its token usage and estimated cost for
+      the hackathon proof-of-usage trace.
+    </p>
+    <label><input id="enabled" type="checkbox" /> Let Muse Ember derive the extraction rule during training (one call per site)</label>
+    <label><input id="allowPageText" type="checkbox" /> Also allow last-resort reads that send the page's visible text (off: refresh/re-teach prompts instead)</label>
+    <label for="apiBase">Meta Model API base URL</label>
+    <input id="apiBase" type="text" placeholder="https://api.meta.com/v1" />
+    <label for="apiKey">API key (stored only in this browser)</label>
+    <input id="apiKey" type="password" autocomplete="off" />
+    <button id="save" type="button">Save</button><span id="saved"></span>
+
+    <h2>Usage trace</h2>
+    <p class="note" id="trace-summary">No AI calls yet.</p>
+    <button id="export" type="button" class="secondary">Export trace JSON</button>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

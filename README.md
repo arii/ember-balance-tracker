@@ -1,0 +1,60 @@
+# Ember Balance Tracker
+
+A Chrome MV3 extension that tracks credit and balance amounts on pages you already use.
+You teach it once ("track this balance"), it reads the value on demand afterwards.
+
+Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hackathon) (Nov 23 - Dec 2, 2026).
+
+## How it works
+
+1. Open a page where you're already signed in (no separate login, no cookies touched -
+   the extension just reads the visible page in your current tab).
+2. Click the extension, enter a label ("Runware credits"), click **Track this balance**,
+   then click the number on the page.
+3. Later, click **Read now** to re-read the value. Readings are kept in a local history.
+
+If a learned read fails (page changed, session expired), the extension asks you to
+refresh the page or re-teach it.
+
+## The Muse Ember role (hybrid by design)
+
+Deterministic first, AI once:
+
+- During training, the extension can ask **Muse Ember** (Meta Model API) for a
+  **deterministic extraction regex** for that site's balance text. The pattern is
+  treated as data, compiled safely, and **accepted only if it reproduces the exact
+  value you just clicked**. One AI call per site, at a fraction of a cent
+  ($0.10/M input, $0.50/M output tokens).
+- Every later read uses the saved selector + regex. No AI call, no cost, instant.
+- If the page changes enough that selector and regex both fail, the extension can
+  fall back to one more Ember call over the visible page text, or ask you to
+  refresh/re-teach.
+
+The AI fallback is **off by default**. Enable it in Options with your own Meta Model
+API key. Every call is recorded with token usage and estimated cost in a local
+**usage trace** (Options > Export trace JSON) - the hackathon's proof-of-usage artifact.
+
+## Privacy
+
+- Permissions: `activeTab`, `storage`, `scripting`. No host permissions, no `cookies`,
+  no `tabs`. Page access starts with your click and ends when you navigate away.
+- Nothing leaves the browser unless you enable the Ember fallback, and then only the
+  page's visible text (capped at 4,000 chars) is sent to Meta's API. Never cookies,
+  never credentials.
+- All trackers, history, settings and the usage trace live in `chrome.storage.local`.
+
+## Development
+
+Zero-dependency vanilla MV3 - no build step; judges read the source as-is.
+
+```bash
+npm install     # dev tools only (jsdom, puppeteer)
+npm test        # 18 unit tests: parsing, selector generation, regex safety, trace math
+npm run e2e     # real Chrome: loads the unpacked extension, runs the train/read flow
+npm run demo    # serves demo/index.html (mock billing page) on :8797
+```
+
+Load unpacked: `chrome://extensions` > Developer mode > Load unpacked > this folder.
+
+Built with guidance from `quangpl/browser-extension-skills` (npx skills package,
+installed under `.agents/skills/`).

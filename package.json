@@ -1,0 +1,16 @@
+{
+  "name": "ember-balance-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome MV3 extension: teach it a balance on any page, read it on demand. Optional Muse Ember (Meta Model API) fallback.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "e2e": "node test/e2e.mjs",
+    "demo": "node demo/serve.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0",
+    "puppeteer": "^23.0.0"
+  }
+}

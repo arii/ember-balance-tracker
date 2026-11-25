@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Acme AI Console - Billing (demo)</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 0; background: #f3f4f6; color: #111827; }
+      nav { background: #0f172a; color: #e2e8f0; padding: 12px 20px; display: flex; gap: 18px; }
+      nav strong { color: #fff; }
+      main { max-width: 720px; margin: 24px auto; background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+      .balance-card { display: flex; gap: 32px; }
+      .metric { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; }
+      .metric .k { color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+      .metric .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+      td, th { text-align: left; padding: 8px; border-bottom: 1px solid #e5e7eb; }
+    </style>
+  </head>
+  <body>
+    <nav><strong>Acme AI</strong><span>Dashboard</span><span>API Keys</span><span>Billing</span></nav>
+    <main>
+      <h1>Billing</h1>
+      <div class="balance-card">
+        <div class="metric">
+          <div class="k">Available balance</div>
+          <div class="v" id="balance">$100.05</div>
+        </div>
+        <div class="metric">
+          <div class="k">Credits this month</div>
+          <div class="v" data-testid="monthly-credits">2,000 credits</div>
+        </div>
+        <div class="metric">
+          <div class="k">Usage</div>
+          <div class="v">0 of 20,000 credits used</div>
+        </div>
+      </div>
+      <h2>Recent charges</h2>
+      <table>
+        <tr><th>Date</th><th>Description</th><th>Amount</th></tr>
+        <tr><td>2026-11-20</td><td>api.runware.ai/v1 image batch</td><td>$4.12</td></tr>
+        <tr><td>2026-11-18</td><td>api.runware.ai/v1 llm tokens</td><td>$0.83</td></tr>
+      </table>
+    </main>
+  </body>
+</html>
