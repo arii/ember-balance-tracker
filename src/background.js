@@ -1,8 +1,7 @@
 // Service worker: storage CRUD, message routing, optional Ember fallback, trace log.
 
-import { findBalanceWithEmber, deriveRegexWithEmber } from "./ember/client.js";
 import { parseBalance } from "./lib/parse.js";
-import { extractWithPattern, validatePattern } from "./lib/regexcheck.js";
+import { learnPattern, readWithFallback } from "./lib/fallback.js";
 
 const TRACKERS_KEY = "trackers"; // [{id,label,urlPattern,selector,createdAt,history:[{ts,value,unit,raw,source}]}]
 const SETTINGS_KEY = "settings"; // {emberEnabled, apiBase, apiKey}
@@ -41,21 +40,16 @@ async function derivePattern(trackerId, trainingText) {
   const trackers = await getStore(TRACKERS_KEY, []);
   const t = trackers.find((x) => x.id === trackerId);
   if (!t) return { ok: false, reason: "unknown-tracker" };
-  const expected = parseBalance(trainingText);
-  const ai = await deriveRegexWithEmber({
-    apiBase: settings.apiBase, apiKey: settings.apiKey, label: t.label, sampleText: trainingText,
-  });
-  if (ai.trace) {
+  const learned = await learnPattern({ settings, label: t.label, trainingText });
+  if (learned.trace) {
     const trace = await getStore(TRACE_KEY, []);
-    trace.push({ ...ai.trace, trackerId, purpose: "derive-regex" });
+    trace.push({ ...learned.trace, trackerId, purpose: "derive-regex" });
     await setStore(TRACE_KEY, trace);
   }
-  if (!ai.ok) return { ok: false, reason: ai.reason };
-  const check = validatePattern(ai.pattern, trainingText, expected.ok ? expected.value : null);
-  if (!check.accepted) return { ok: false, reason: "pattern-rejected-" + check.reason, pattern: ai.pattern };
-  t.pattern = check.pattern;
+  if (!learned.ok) return { ok: false, reason: learned.reason, pattern: learned.pattern };
+  t.pattern = learned.pattern;
   await setStore(TRACKERS_KEY, trackers);
-  return { ok: true, pattern: check.pattern };
+  return { ok: true, pattern: learned.pattern };
 }
 
 async function recordReading(trackerId, reading) {
@@ -81,48 +75,38 @@ async function readTracker(trackerId, tabId) {
   const res = await chrome.tabs.sendMessage(tabId, { type: "ebt:read", selector: t.selector });
 
   if (res?.ok) {
-    // 1. Learned deterministic regex first (no AI call).
-    if (t.pattern) {
-      const viaPattern = extractWithPattern(res.text, t.pattern);
-      if (viaPattern.ok) {
-        await recordReading(trackerId, { value: viaPattern.value, unit: viaPattern.unit, raw: viaPattern.raw, source: "pattern" });
-        return { ok: true, source: "pattern", parsed: viaPattern };
-      }
+    // Deterministic read first, Ember fallback last - the shared, tested
+    // orchestration in lib/fallback.js owns precedence and the consent gate.
+    const settings = await getStore(SETTINGS_KEY, {});
+    let pageText;
+    const result = await readWithFallback({
+      text: res.text,
+      pattern: t.pattern,
+      settings,
+      label: t.label,
+      getPageText: async () => {
+        if (pageText === undefined) {
+          const sample = await chrome.tabs.sendMessage(tabId, { type: "ebt:page-text" });
+          pageText = sample?.text || "";
+        }
+        return pageText;
+      },
+    });
+    if (result.trace) {
+      const trace = await getStore(TRACE_KEY, []);
+      trace.push({ ...result.trace, trackerId });
+      await setStore(TRACE_KEY, trace);
     }
-    // 2. Generic parser on the same element text.
-    const parsed = parseBalance(res.text);
-    if (parsed.ok) {
-      await recordReading(trackerId, { value: parsed.value, unit: parsed.unit, raw: parsed.raw, source: "dom" });
-      return { ok: true, source: "dom", parsed };
-    }
+    if (!result.ok) return result;
+    await recordReading(trackerId, { value: result.parsed.value, unit: result.parsed.unit, raw: result.parsed.raw, source: result.source });
+    return { ok: true, source: result.source, parsed: result.parsed };
   }
 
-  // Deterministic read failed. Last-resort AI read sends visible page text and
-  // needs BOTH the Ember key and the separate page-text consent (Ari's design:
-  // teach-once generation is the norm, outbound page text is the exception).
-  const settings = await getStore(SETTINGS_KEY, {});
-  if (!settings.emberEnabled || !settings.apiKey || !settings.allowPageText) {
-    return {
-      ok: false,
-      reason: res?.ok ? "unparseable" : res?.reason || "read-failed",
-      needsRefresh: res?.reason === "selector-not-found",
-    };
-  }
-  const sample = await chrome.tabs.sendMessage(tabId, { type: "ebt:page-text" });
-  const ai = await findBalanceWithEmber({
-    apiBase: settings.apiBase, apiKey: settings.apiKey, label: t.label, pageText: sample?.text || "",
-  });
-  if (ai.trace) {
-    const trace = await getStore(TRACE_KEY, []);
-    trace.push({ ...ai.trace, trackerId });
-    await setStore(TRACE_KEY, trace);
-  }
-  if (!ai.ok) return { ok: false, reason: ai.reason || "ai-failed" };
-  const parsed = parseBalance(ai.text);
-  if (!parsed.ok) return { ok: false, reason: "ai-unparseable", raw: ai.text };
-  await recordReading(trackerId, { value: parsed.value, unit: parsed.unit, raw: parsed.raw, source: "ember" });
-  return { ok: true, source: "ember", parsed };
+  // The trained selector no longer resolves: report the honest re-teach state.
+  return { ok: false, reason: res?.reason || "read-failed", needsRefresh: res?.reason === "selector-not-found" };
 }
+
+
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {

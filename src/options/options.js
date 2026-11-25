@@ -12,7 +12,7 @@ async function load() {
   const { emberTrace } = await chrome.storage.local.get("emberTrace");
   const s = summarizeTrace(emberTrace || []);
   document.querySelector("#trace-summary").textContent = s.calls
-    ? `${s.calls} AI calls · ${s.totalTokens ?? s.promptTokens + s.completionTokens} tokens · ≈ $${s.costUsd} of the $10 budget`
+    ? `${s.calls} AI calls (${s.failedCalls} failed) · ${s.totalTokens} tokens · ${s.costUsd == null ? "cost unknown (usage missing)" : `≈ $${s.costUsd} of the $10 budget`}`
     : "No AI calls yet.";
 }
 

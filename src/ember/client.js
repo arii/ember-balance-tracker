@@ -38,26 +38,39 @@ const REGEX_PROMPT = (label, sampleText) => [
   },
 ];
 
+// Shared transport. On failure returns a reason + HTTP status only: the error
+// body is never read into the result, and the API key never leaves the header.
 async function chat({ apiBase, apiKey, messages, maxTokens }) {
-  const res = await fetch(`${apiBase.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: DEFAULT_MODEL, messages, max_tokens: maxTokens, temperature: 0 }),
-  });
-  if (!res.ok) return { ok: false, reason: `http-${res.status}` };
+  let res;
+  try {
+    res = await fetch(`${apiBase.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: DEFAULT_MODEL, messages, max_tokens: maxTokens, temperature: 0 }),
+    });
+  } catch {
+    return { ok: false, reason: "network-error", status: null };
+  }
+  if (!res.ok) return { ok: false, reason: `http-${res.status}`, status: res.status };
   const data = await res.json();
   return { ok: true, text: data?.choices?.[0]?.message?.content?.trim() || "", usage: data?.usage };
 }
 
+const traceFor = (label, r) =>
+  makeTraceEntry(r.ok
+    ? { label, model: DEFAULT_MODEL, usage: r.usage }
+    : { label, model: DEFAULT_MODEL, ok: false, status: r.status, error: r.reason });
+
 /**
- * Training-time step (Ari's design): ask Muse Ember once how to extract the
- * amount, as a deterministic regex usable for later reads without AI calls.
+ * Training-time step (per the extension's click-to-train design): ask Muse
+ * Ember once how to extract the amount, as a deterministic regex usable for
+ * later reads without AI calls.
  */
 export async function deriveRegexWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, sampleText }) {
   if (!apiKey) return { ok: false, reason: "no-api-key" };
   const r = await chat({ apiBase, apiKey, messages: REGEX_PROMPT(label, sampleText), maxTokens: 60 });
-  if (!r.ok) return r;
-  const trace = makeTraceEntry({ label, usage: r.usage });
+  const trace = traceFor(label, r);
+  if (!r.ok) return { ok: false, reason: r.reason, trace };
   const pattern = r.text.replace(/^`+|`+$/g, "").trim();
   if (!pattern) return { ok: false, reason: "model-empty", trace };
   return { ok: true, pattern, trace };
@@ -65,15 +78,9 @@ export async function deriveRegexWithEmber({ apiBase = DEFAULT_API_BASE, apiKey,
 
 export async function findBalanceWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, pageText }) {
   if (!apiKey) return { ok: false, reason: "no-api-key" };
-  const res = await fetch(`${apiBase.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: DEFAULT_MODEL, messages: PROMPT(label, pageText), max_tokens: 32, temperature: 0 }),
-  });
-  if (!res.ok) return { ok: false, reason: `http-${res.status}` };
-  const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content?.trim() || "";
-  const trace = makeTraceEntry({ label, usage: data?.usage });
-  if (!text || /^NONE\b/i.test(text)) return { ok: false, reason: "model-none", trace };
-  return { ok: true, text, trace };
+  const r = await chat({ apiBase, apiKey, messages: PROMPT(label, pageText), maxTokens: 32 });
+  const trace = traceFor(label, r);
+  if (!r.ok) return { ok: false, reason: r.reason, trace };
+  if (!r.text || /^NONE\b/i.test(r.text)) return { ok: false, reason: "model-none", trace };
+  return { ok: true, text: r.text, trace };
 }

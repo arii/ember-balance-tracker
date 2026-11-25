@@ -26,9 +26,9 @@ Deterministic first, AI once:
   value you just clicked**. One AI call per site, at a fraction of a cent
   ($0.10/M input, $0.50/M output tokens).
 - Every later read uses the saved selector + regex. No AI call, no cost, instant.
-- If the page changes enough that selector and regex both fail, the extension can
-  fall back to one more Ember call over the visible page text, or ask you to
-  refresh/re-teach.
+- If the element still exists but deterministic parsing fails, a separately
+  consented Ember call can read visible page text. A missing selector asks you to
+  refresh/re-teach instead.
 
 The AI fallback is **off by default**. Enable it in Options with your own Meta Model
 API key. Every call is recorded with token usage and estimated cost in a local
@@ -49,12 +49,13 @@ Zero-dependency vanilla MV3 - no build step; judges read the source as-is.
 
 ```bash
 npm install     # dev tools only (jsdom, puppeteer)
-npm test        # 18 unit tests: parsing, selector generation, regex safety, trace math
+npm test        # 32 unit tests: parsing, selectors, regex safety, consent, mock API, trace math
 npm run e2e     # real Chrome: loads the unpacked extension, runs the train/read flow
 npm run demo    # serves demo/index.html (mock billing page) on :8797
 ```
 
 Load unpacked: `chrome://extensions` > Developer mode > Load unpacked > this folder.
 
-Built with guidance from `quangpl/browser-extension-skills` (npx skills package,
-installed under `.agents/skills/`).
+Historical third-party guidance was removed from the source tree; its license notice is retained in `NOTICE`.
+
+See [HARDWARE-TESTING.md](HARDWARE-TESTING.md) for local setup and the remaining real-API checks.

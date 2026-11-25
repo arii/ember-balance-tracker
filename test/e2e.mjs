@@ -62,7 +62,20 @@ try {
   const gone = await page.evaluate(() => window.__ebt.readAt("#does-not-exist"));
   check("missing element reports selector-not-found", gone?.ok === false && gone.reason === "selector-not-found");
 
-  // 5. Popup renders in the extension context with a seeded tracker.
+  // 5. Fixtures: redesign is honest about a stale selector; ambiguity stays scoped to the taught element.
+  await page.goto("http://127.0.0.1:8797/redesigned.html", { waitUntil: "load" });
+  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js"), type: "module" });
+  await page.waitForFunction("window.__ebt !== undefined", { timeout: 10000 });
+  const redesigned = await page.evaluate(() => window.__ebt.readAt("#balance"));
+  check("redesign reports cannot-find/re-teach state", redesigned?.ok === false && redesigned.reason === "selector-not-found");
+
+  await page.goto("http://127.0.0.1:8797/ambiguous.html", { waitUntil: "load" });
+  await page.addScriptTag({ path: path.join(root, "src", "content", "content.js"), type: "module" });
+  await page.waitForFunction("window.__ebt !== undefined", { timeout: 10000 });
+  const ambiguous = await page.evaluate(() => window.__ebt.readAt("#labeled-balance"));
+  check("ambiguous page reads only the user-labeled element", ambiguous?.ok === true && ambiguous.text === "$100.05", JSON.stringify(ambiguous));
+
+  // 6. Popup renders in the extension context with a seeded tracker.
   const popup = await browser.newPage();
   await popup.setViewport({ width: 360, height: 520 });
   await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`, { waitUntil: "load" });
