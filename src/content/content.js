@@ -3,7 +3,8 @@
 // Reads only the visible DOM of this tab: no cookies, no credentials, no storage access.
 // Classic script (no static imports, no import.meta): selector.js is loaded by dynamic import
 // from web_accessible_resources; balance parsing happens in the service worker.
-
+if (!globalThis.__ebtContentInstalled) {
+globalThis.__ebtContentInstalled = true;
 const HIGHLIGHT_CLASS = "ebt-picker-highlight";
 let training = null; // { resolve } while picking
 
@@ -116,7 +117,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         startTraining().then((picked) => {
           if (picked) {
             toast("Balance picked — saving…", 2000);
-            chrome.runtime.sendMessage({ type: "ebt:picked", picked }).catch(() => {});
+            chrome.runtime.sendMessage({ type: "ebt:picked", picked })
+        .then((r) => { if (!r?.ok) toast("Training failed to save: " + (r?.reason || "no response"), 6000); })
+        .catch((e) => toast("Training failed to save: " + String(e?.message || e), 6000));
           } else {
             chrome.runtime.sendMessage({ type: "ebt:pick-cancelled" }).catch(() => {});
           }
@@ -143,3 +146,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true; // async sendResponse
 });
 }
+
+} // __ebtContentInstalled

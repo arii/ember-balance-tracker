@@ -90,8 +90,13 @@ $("#train-btn").addEventListener("click", async () => {
   if (!tab?.id || !/^https?:/.test(tab.url || "")) return status("Open a regular web page first.", true);
   // Arm and close: the background completes the pick, stores the tracker,
   // and (if enabled) asks Muse Ember for a reusable extraction regex.
-  await chrome.runtime.sendMessage({ type: "ebt:arm-training", tabId: tab.id, label });
-  window.close();
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "ebt:arm-training", tabId: tab.id, label });
+    if (!result?.ok || !result.armed) return status(`Could not start picker: ${result?.reason || "no accessible frame"}.`, true);
+    window.close();
+  } catch (e) {
+    status(`Could not start picker: ${e?.message || e}.`, true);
+  }
 });
 
 async function renderEmberLine() {
