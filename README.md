@@ -51,10 +51,18 @@ Zero-dependency vanilla MV3 - no build step; judges read the source as-is.
 
 ```bash
 npm install     # dev tools only (jsdom, puppeteer)
-npm test        # 66 unit tests: parsing, selectors, regex safety, consent, mock API, trace math, multi-frame reads
+npm test        # unit tests: parsing, selectors, regex safety, consent, mock API, trace math, multi-frame reads, fixture-driven extraction
 npm run e2e     # real Chrome: loads the unpacked extension, runs the train/read flow
 npm run demo    # serves demo/index.html (mock billing page) on :8797
 ```
+
+### Test fixtures
+
+`test/fixtures/adaption-balance-pages.json` holds 98 synthetic billing and usage page texts,
+generated with Adaption for evaluation. They are fictional (no real accounts or sites), each with
+the expected balance, unit and label. `test/adaption-fixtures.test.js` runs them through
+`parseBalance`, `extractWithPattern` and `validatePattern`. They test the text parsing and regex
+layers only. They do not exercise the browser DOM, selector learning, or a live Ember call.
 
 Load unpacked: `chrome://extensions` > Developer mode > Load unpacked > this folder.
 
