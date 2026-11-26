@@ -22,34 +22,42 @@ function isStableId(id) {
 }
 
 /**
- * Build a selector for `el`. Prefers a stable #id, otherwise a short
- * tag:nth-of-type path (max depth 5). Returns a string that
+ * Build a selector for `el`. Prefers a stable #id, otherwise a unique
+ * tag:nth-of-type path extended toward the document root as needed. Returns a string that
  * document.querySelector can resolve back to the element.
  */
 export function getSelector(el, doc = el.ownerDocument) {
   if (!el || !el.tagName) throw new Error("getSelector: not an element");
-  if (el.id && isStableId(el.id)) return "#" + cssEscapeIdent(el.id);
+  const unique = (selector) => {
+    try {
+      const matches = doc.querySelectorAll(selector);
+      return matches.length === 1 && matches[0] === el;
+    } catch { return false; }
+  };
+  const idSelector = (node) => node.id && isStableId(node.id) ? "#" + cssEscapeIdent(node.id) : null;
+  const id = idSelector(el);
+  if (id && unique(id)) return id;
 
-  // Useful data attributes make resilient anchors.
   for (const attr of el.attributes || []) {
     if (/^data-(testid|test|qa|cy|balance|amount|value)$/.test(attr.name)) {
-      return `${el.tagName.toLowerCase()}[${attr.name}="${attr.value.replace(/"/g, '\\"')}"]`;
+      const value = attr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\a ").replace(/\r/g, "\\d ").replace(/\f/g, "\\c ");
+      const candidate = `${el.tagName.toLowerCase()}[${attr.name}="${value}"]`;
+      if (unique(candidate)) return candidate;
     }
   }
 
+  // A five-level suffix can collide across dashboard cards. Extend toward
+  // the document root until this path identifies exactly the picked node.
   const parts = [];
-  let cur = el;
-  let depth = 0;
-  while (cur && cur.tagName && cur.tagName.toLowerCase() !== "html" && depth < 5) {
-    let part = cur.tagName.toLowerCase();
-    if (cur.id && isStableId(cur.id)) {
-      parts.unshift("#" + cssEscapeIdent(cur.id) + " > " + part);
-      break;
+  for (let cur = el; cur && cur.tagName; cur = cur.parentElement) {
+    parts.unshift(`${cur.tagName.toLowerCase()}:nth-of-type(${nthOfType(cur)})`);
+    const ancestorId = idSelector(cur);
+    if (ancestorId) {
+      const anchored = [ancestorId, ...parts.slice(1)].join(" > ");
+      if (unique(anchored)) return anchored;
     }
-    part += `:nth-of-type(${nthOfType(cur)})`;
-    parts.unshift(part);
-    cur = cur.parentElement;
-    depth++;
+    const candidate = parts.join(" > ");
+    if (unique(candidate)) return candidate;
   }
-  return parts.join(" > ");
+  throw new Error("getSelector: element is not uniquely selectable in document");
 }
