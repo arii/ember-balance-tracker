@@ -8,7 +8,7 @@ fallback is OFF by default and needs your API key.
 ## Set up (5 min)
 1. git clone https://github.com/arii/ember-balance-tracker && cd ember-balance-tracker
 2. npm install
-3. npm test        # unit: expect 66 passed / 0 failed
+3. npm test        # unit: expect 376 passed / 0 failed (as of main 4148c09)
 4. npm run e2e     # real Chrome via puppeteer: expect 9 passed, screenshots in test/artifacts/
    # If puppeteer's bundled Chrome isn't downloaded, point at system Chrome:
    # PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome npm run e2e
@@ -16,7 +16,7 @@ fallback is OFF by default and needs your API key.
 ## Try the extension itself
 1. chrome://extensions -> Developer mode -> Load unpacked -> pick the repo folder
 2. npm run demo    # serves a mock billing page
-3. Open the demo page, click the extension, "Track this balance", click the $ amount, label it
+3. Open the demo page, click the toolbar icon (puzzle menu, then Ember Balance Tracker; this click grants access to the tab), type a label, click "Track this balance", then click the $ amount on the page. Checked with real toolbar clicks on the demo page only, not a real billing site or live Ember.
 4. Days-later flow: click "Read now" - instant, no API call
 5. Try demo/redesigned.html (honest "can't find it - refresh or re-teach") and
    demo/ambiguous.html (only your labeled element is read)
