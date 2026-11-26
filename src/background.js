@@ -55,7 +55,12 @@ async function derivePattern(trackerId, trainingText) {
   if (!t) return { ok: false, reason: "unknown-tracker" };
   const learned = await learnPattern({ settings, label: t.label, trainingText, preSend: reserveForSend });
   await settleReservation(learned, { trackerId, purpose: "derive-regex" });
-  if (!learned.ok) return { ok: false, reason: learned.reason, pattern: learned.pattern };
+  // Keep the outcome visible in the popup instead of failing silently.
+  t.emberStatus = { ok: !!learned.ok, reason: learned.ok ? null : learned.reason, ts: new Date().toISOString() };
+  if (!learned.ok) {
+    await setStore(TRACKERS_KEY, trackers);
+    return { ok: false, reason: learned.reason, pattern: learned.pattern };
+  }
   t.pattern = learned.pattern;
   await setStore(TRACKERS_KEY, trackers);
   return { ok: true, pattern: learned.pattern };

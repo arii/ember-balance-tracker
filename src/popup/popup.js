@@ -48,7 +48,7 @@ async function render() {
     actions.append(readBtn, delBtn);
     const meta = document.createElement("span");
     meta.className = "t-meta";
-    meta.textContent = `${t.urlPattern} · ${fmtReading(t)}${t.pattern ? " · Ember rule ✓" : ""}`;
+    meta.textContent = `${t.urlPattern} · ${fmtReading(t)}${t.pattern ? " · Ember rule ✓" : t.emberStatus && !t.emberStatus.ok ? ` · Ember: no rule learned (${t.emberStatus.reason}); reads use the saved page element` : ""}`;
     li.append(label, actions, meta);
     list.appendChild(li);
   }
