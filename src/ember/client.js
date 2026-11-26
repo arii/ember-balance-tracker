@@ -79,7 +79,7 @@ async function chat({ apiBase, apiKey, messages, maxTokens, preSend }) {
   }
   if (!res.ok) return { ok: false, reason: `http-${res.status}`, status: res.status, reservationId };
   const data = await res.json();
-  return { ok: true, text: data?.choices?.[0]?.message?.content?.trim() || "", usage: data?.usage, reservationId };
+  return { ok: true, text: data?.choices?.[0]?.message?.content?.trim() || "", finishReason: data?.choices?.[0]?.finish_reason ?? null, usage: data?.usage, reservationId };
 }
 
 // A trace exists IFF a request was actually sent. Budget-denied calls carry
@@ -94,13 +94,19 @@ const traceFor = (label, r) =>
  * Ember once how to extract the amount, as a deterministic regex usable for
  * later reads without AI calls.
  */
+// Output budget for the derive call. completion_tokens include private
+// reasoning even at reasoning_effort "low" (dev.meta.ai/docs/reasoning), and a
+// live call at 2000 returned no visible text (1998 reasoning tokens). 4000
+// leaves headroom for the short regex after light reasoning.
+export const DERIVE_MAX_TOKENS = 4000;
+
 export async function deriveRegexWithEmber({ apiBase = DEFAULT_API_BASE, apiKey, label, sampleText, preSend }) {
   if (!apiKey) return { ok: false, reason: "no-api-key" };
-  const r = await chat({ apiBase, apiKey, messages: REGEX_PROMPT(label, sampleText), maxTokens: 2000, preSend });
+  const r = await chat({ apiBase, apiKey, messages: REGEX_PROMPT(label, sampleText), maxTokens: 4000 /* = DERIVE_MAX_TOKENS, asserted in test */, preSend });
   const trace = traceFor(label, r);
   if (!r.ok) return { ok: false, reason: r.reason, trace };
   const pattern = r.text.replace(/^`+|`+$/g, "").trim();
-  if (!pattern) return { ok: false, reason: "model-empty", trace };
+  if (!pattern) return { ok: false, reason: r.finishReason === "length" ? "model-empty-output-limit" : "model-empty", trace };
   return { ok: true, pattern, trace };
 }
 
