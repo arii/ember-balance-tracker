@@ -39,3 +39,31 @@ test("bare number fallback", () => {
   assert.equal(r.value, 100.05);
   assert.equal(r.kind, "bare");
 });
+
+test("parses negative currency balances (overdrawn)", () => {
+  assert.equal(parseBalance("Available Balance: -$5.20").value, -5.2);
+  assert.equal(parseBalance("-$0.50").value, -0.5);
+  assert.equal(parseBalance("Wallet balance -$12.00").value, -12);
+});
+
+test("minus must attach to the amount, not sit inside a hyphenated token", () => {
+  // "AC-8812" is an identifier; its hyphen is not a sign
+  assert.equal(parseBalance("Account ID: AC-8812").value, 8812);
+  // and a spaced dash before an amount is punctuation, not a sign
+  assert.equal(parseBalance("Balance - $5.20").value, 5.2);
+});
+
+test("parses decimal-comma amounts (pt-BR / EU)", () => {
+  assert.equal(parseBalance("Saldo Disponível: R$ 12.890,50").value, 12890.5);
+  assert.equal(parseBalance("R$ 1.234.567,89").value, 1234567.89);
+  assert.equal(parseBalance("Saldo: 1234,56").value, 1234.56);
+  assert.equal(parseBalance("12.890,50 credits").value, 12890.5);
+});
+
+test("US formats unchanged with decimal-comma support", () => {
+  assert.equal(parseBalance("$1,250.50").value, 1250.5);
+  assert.equal(parseBalance("1,250 credits").value, 1250);
+  assert.equal(parseBalance("100,000").value, 100000);
+  assert.equal(parseBalance("0 of 20,000 credits used").total, 20000);
+  assert.equal(parseBalance("$100.05").value, 100.05);
+});
