@@ -35,6 +35,37 @@ export function parseBalance(text) {
   if (typeof text !== "string") return { ok: false, value: null, unit: null, raw: text, kind: null };
   const raw = text.trim().replace(/\s+/g, " ");
   if (!raw) return { ok: false, value: null, unit: null, raw, kind: null };
+  const res = parseCore(raw);
+  if (!res.ok || typeof res.value !== "number") return res;
+  // Accounting negative: "($5.20)" / "Balance: (1,234.56)". Only when the
+  // parenthesised number is the sole number in the text, so a trailing
+  // "(min $50.00)" aside never flips the sign. With a currency marker inside
+  // the parentheses that is enough; a bare number needs a decimal or grouping
+  // separator and no letters after it, so "Credits (5) remaining" and
+  // "Total (1,234.56) USD" are left alone.
+  if (res.kind !== "used-of-total" && res.value > 0) {
+    const m = raw.match(/^[^\d()]*\(\s*((?:R?[$€£]\s?|USD\s)?)(\d[\d.,'’]*)\s*\)([^\d]*)$/);
+    if (m && (m[1] || (/[.,]/.test(m[2]) && !/[A-Za-z]/.test(m[3])))) return { ...res, value: -res.value };
+  }
+  return res;
+}
+
+// Expand "12K" / "1.5M" (suffix glued to the digits) and drop Swiss-style
+// apostrophe grouping ("1'234.56") before the branches run. "12 MB" has a
+// space and a trailing letter, so it never matches the suffix rule.
+function prepare(raw) {
+  return raw
+    .replace(/(\d)['’](?=\d{3}(?!\d))/g, "$1")
+    .replace(/(\d[\d.,]*)([kKM])(?![A-Za-z\d])/g, (all, num, suf) => {
+      const n = normalizeNumber(num);
+      if (n === null) return all;
+      return String(Number((n * (suf.toLowerCase() === "k" ? 1e3 : 1e6)).toFixed(2)));
+    });
+}
+
+function parseCore(rawIn) {
+  const raw0 = rawIn;
+  const raw = prepare(rawIn);
 
   // "0 of 20,000 credits used" / "500 / 2000 credits"
   const usedOf = raw.match(new RegExp(NUMBER + "\\s*(?:of|\\/)\\s*" + NUMBER + "\\s*([A-Za-z%]+)?", "i"));
@@ -42,7 +73,7 @@ export function parseBalance(text) {
     const used = normalizeNumber(usedOf[1]);
     const total = normalizeNumber(usedOf[2]);
     if (used !== null && total !== null && total > 0) {
-      return { ok: true, value: used, total, unit: usedOf[3] || null, raw, kind: "used-of-total" };
+      return { ok: true, value: used, total, unit: usedOf[3] || null, raw: raw0, kind: "used-of-total" };
     }
   }
 
@@ -52,7 +83,7 @@ export function parseBalance(text) {
   const currency = raw.match(/(-)?(?:R?[$€£]\s?|USD\s)([\d.,]+)/);
   if (currency) {
     const value = normalizeNumber(currency[2]);
-    if (value !== null) return { ok: true, value: currency[1] ? -value : value, unit: "$", raw, kind: "currency" };
+    if (value !== null) return { ok: true, value: currency[1] ? -value : value, unit: "$", raw: raw0, kind: "currency" };
   }
 
   // "4,000 credits" / "127 CR" / "10 points" (number first, unit word after).
@@ -60,7 +91,7 @@ export function parseBalance(text) {
   const unitAfter = raw.match(new RegExp(NUMBER + "\\s*(credits?|points?|tokens?|CR|cr|hrs?|hours?|minutes?|GB|MB|%)\\b"));
   if (unitAfter) {
     const value = normalizeNumber(unitAfter[1]);
-    if (value !== null) return { ok: true, value, unit: unitAfter[2], raw, kind: "unit" };
+    if (value !== null) return { ok: true, value, unit: unitAfter[2], raw: raw0, kind: "unit" };
   }
 
   // "Balance: 100.05" / "Balance: -100" bare number last resort. A leading
@@ -69,10 +100,10 @@ export function parseBalance(text) {
   const bare = raw.match(new RegExp("(?<![\\w$€£])(-)?" + NUMBER));
   if (bare) {
     const value = normalizeNumber(bare[2]);
-    if (value !== null) return { ok: true, value: bare[1] ? -value : value, unit: null, raw, kind: "bare" };
+    if (value !== null) return { ok: true, value: bare[1] ? -value : value, unit: null, raw: raw0, kind: "bare" };
   }
 
-  return { ok: false, value: null, unit: null, raw, kind: null };
+  return { ok: false, value: null, unit: null, raw: raw0, kind: null };
 }
 
 export { UNIT_WORDS };
