@@ -33,3 +33,39 @@ test("rejects unstable auto-generated ids", () => {
   assert.notEqual(sel, "#a123456789");
   assert.equal(d2.querySelector(sel), d2.querySelector("div"));
 });
+
+
+test("deep repeated dashboard cards get distinct unique paths", () => {
+  const card = value => `<section>${"<div>".repeat(7)}<span>${value}</span>${"</div>".repeat(7)}</section>`;
+  const d = new JSDOM(`<main>${card("$1.00")}${card("$100.05")}</main>`).window.document;
+  const el = [...d.querySelectorAll("span")][1];
+  const sel = getSelector(el);
+  assert.equal(d.querySelectorAll(sel).length, 1);
+  assert.equal(d.querySelector(sel), el);
+});
+
+test("duplicate IDs and data attributes never select another balance", () => {
+  const d = new JSDOM('<main><div id="balance" data-testid="amount">$1</div><div id="balance" data-testid="amount">$100</div></main>').window.document;
+  const el = d.querySelectorAll("div")[1];
+  const sel = getSelector(el);
+  assert.equal(d.querySelectorAll(sel).length, 1);
+  assert.equal(d.querySelector(sel), el);
+});
+
+test("ancestor IDs do not add a nonexistent extra child segment", () => {
+  const d = new JSDOM('<section id="account"><div><span>$100</span></div></section>').window.document;
+  const el = d.querySelector("span");
+  assert.equal(d.querySelector(getSelector(el)), el);
+});
+
+test("unselectable detached elements fail instead of returning misleading selector", () => {
+  const d = new JSDOM('<main></main>').window.document;
+  assert.throws(() => getSelector(d.createElement("span")), /not uniquely selectable/);
+});
+
+test("data attribute selectors handle literal backslashes and quotes", () => {
+  const d = new JSDOM('<main><span>$100</span></main>').window.document;
+  const el = d.querySelector("span");
+  el.setAttribute("data-testid", 'billing\\value"amount');
+  assert.equal(d.querySelector(getSelector(el)), el);
+});
