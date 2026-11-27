@@ -2,8 +2,16 @@
 
 import { parseBalance } from "./lib/parse.js";
 import { BUILD_ID } from "./lib/build.js";
+import { restoreTracker } from "./lib/restore.js";
 import { learnPattern, readWithFallback } from "./lib/fallback.js";
 import { budgetAllows, worstCaseCost, TRACE_MODEL, MAX_TIER_BODY_BYTES } from "./lib/trace.js";
+
+let storeUpdateQueue = Promise.resolve();
+function enqueueStoreUpdate(fn) {
+  const p = storeUpdateQueue.then(fn);
+  storeUpdateQueue = p.catch(() => {});
+  return p;
+}
 
 const TRACKERS_KEY = "trackers"; // [{id,label,urlPattern,selector,createdAt,history:[{ts,value,unit,raw,source}]}]
 const SETTINGS_KEY = "settings"; // {emberEnabled, allowPageText, apiBase, apiKey, maxSpendUsd}
@@ -438,6 +446,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const trackers = await getStore(TRACKERS_KEY, []);
         await setStore(TRACKERS_KEY, trackers.filter((t) => t.id !== msg.id));
         sendResponse({ ok: true });
+        break;
+      }
+      case "ebt:restore-tracker": {
+        const result = await enqueueStoreUpdate(async () => {
+          const trackers = await getStore(TRACKERS_KEY, []);
+          const res = restoreTracker(trackers, msg.tracker);
+          if (res.ok) {
+            await setStore(TRACKERS_KEY, res.trackers);
+          }
+          return res;
+        });
+        sendResponse(result);
         break;
       }
       case "ebt:read-tracker":
