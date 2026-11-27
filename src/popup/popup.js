@@ -94,10 +94,10 @@ async function render() {
       }
     });
     // Balance first: the row shows the value; actions live in a closed menu.
-    // Only an action the row needs right now stays inline, so stale, unverified
-    // and unreadable rows still say what to do.
+    // Only an action the row needs right now stays inline: a failed (stale) read
+    // offers Re-track; an unverified but working read is labelled, not nagged.
     const onTab = matchesTab(t, tabNow?.url);
-    const needsFix = isStale(t) || isUnverified(t);
+    const needsFix = isStale(t); // unverified rows keep their label; Re-track is in the menu, not forced
     const menu = document.createElement("details");
     menu.className = "more";
     const sum = document.createElement("summary");
