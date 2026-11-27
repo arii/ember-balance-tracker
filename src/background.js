@@ -13,6 +13,15 @@ function enqueueStoreUpdate(fn) {
   return p;
 }
 
+async function updateTrackers(mutate) {
+  return enqueueStoreUpdate(async () => {
+    const trackers = await getStore(TRACKERS_KEY, []);
+    const result = await mutate(trackers);
+    await setStore(TRACKERS_KEY, trackers);
+    return result;
+  });
+}
+
 const TRACKERS_KEY = "trackers"; // [{id,label,urlPattern,selector,createdAt,history:[{ts,value,unit,raw,source}]}]
 const SETTINGS_KEY = "settings"; // {emberEnabled, allowPageText, apiBase, apiKey, maxSpendUsd}
 const DEFAULT_MAX_SPEND_USD = 2; // hard cap approved by the user; editable on the options page
@@ -38,20 +47,20 @@ async function setSession(key, value) {
 }
 
 async function addTracker({ label, selector, anchor = null, url, pattern = null }) {
-  const trackers = await getStore(TRACKERS_KEY, []);
-  const tracker = {
-    id: crypto.randomUUID(),
-    label,
-    selector,
-    anchor,
-    pattern, // model-derived deterministic extraction regex, validated at training time
-    urlPattern: new URL(url).origin,
-    createdAt: new Date().toISOString(),
-    history: [],
-  };
-  trackers.push(tracker);
-  await setStore(TRACKERS_KEY, trackers);
-  return tracker;
+  return updateTrackers((trackers) => {
+    const tracker = {
+      id: crypto.randomUUID(),
+      label,
+      selector,
+      anchor,
+      pattern, // model-derived deterministic extraction regex, validated at training time
+      urlPattern: new URL(url).origin,
+      createdAt: new Date().toISOString(),
+      history: [],
+    };
+    trackers.push(tracker);
+    return tracker;
+  });
 }
 
 // After training: if the Ember fallback is enabled, ask Muse Ember once for a
@@ -66,14 +75,16 @@ async function derivePattern(trackerId, trainingText) {
   const learned = await learnPattern({ settings, label: t.label, trainingText, preSend: reserveForSend });
   await settleReservation(learned, { trackerId, purpose: "derive-regex" });
   // Keep the outcome visible in the popup instead of failing silently.
-  t.emberStatus = { ok: !!learned.ok, reason: learned.ok ? null : learned.reason, ts: new Date().toISOString() };
-  if (!learned.ok) {
-    await setStore(TRACKERS_KEY, trackers);
-    return { ok: false, reason: learned.reason, pattern: learned.pattern };
-  }
-  t.pattern = learned.pattern;
-  await setStore(TRACKERS_KEY, trackers);
-  return { ok: true, pattern: learned.pattern };
+  const result = learned.ok
+    ? { ok: true, pattern: learned.pattern }
+    : { ok: false, reason: learned.reason, pattern: learned.pattern };
+  await updateTrackers((trackers) => {
+    const existing = trackers.find((x) => x.id === trackerId);
+    if (!existing) return;
+    existing.emberStatus = { ok: !!learned.ok, reason: learned.ok ? null : learned.reason, ts: new Date().toISOString() };
+    if (learned.ok) existing.pattern = learned.pattern;
+  });
+  return result;
 }
 
 // The service worker is single-threaded; this module-level queue makes
@@ -140,23 +151,23 @@ export async function settleReservation(result, extra = {}) {
 }
 
 async function recordReading(trackerId, reading) {
-  const trackers = await getStore(TRACKERS_KEY, []);
-  const t = trackers.find((x) => x.id === trackerId);
-  if (!t) return null;
-  t.history.push({ ts: new Date().toISOString(), verified: false, healed: false, ...reading });
-  if (t.history.length > 500) t.history = t.history.slice(-500);
-  delete t.lastFailure;
-  await setStore(TRACKERS_KEY, trackers);
-  return t;
+  return updateTrackers((trackers) => {
+    const t = trackers.find((x) => x.id === trackerId);
+    if (!t) return null;
+    t.history.push({ ts: new Date().toISOString(), verified: false, healed: false, ...reading });
+    if (t.history.length > 500) t.history = t.history.slice(-500);
+    delete t.lastFailure;
+    return t;
+  });
 }
 
 async function recordFailure(trackerId, reason) {
-  const trackers = await getStore(TRACKERS_KEY, []);
-  const t = trackers.find((x) => x.id === trackerId);
-  if (!t) return null;
-  t.lastFailure = { ts: new Date().toISOString(), reason };
-  await setStore(TRACKERS_KEY, trackers);
-  return t;
+  return updateTrackers((trackers) => {
+    const t = trackers.find((x) => x.id === trackerId);
+    if (!t) return null;
+    t.lastFailure = { ts: new Date().toISOString(), reason };
+    return t;
+  });
 }
 
 // Arm the picker in every reachable frame. allFrames file injection can
@@ -396,12 +407,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             sendResponse({ ok: false, reason: "origin-mismatch" });
             break;
           }
-          tracker.selector = msg.picked.selector;
-          tracker.anchor = msg.picked.anchor || null;
-          delete tracker.lastFailure;
-          // keep pattern! delete tracker.pattern is NOT done
+          await updateTrackers((trackers) => {
+            const existing = trackers.find(t => t.id === pending.trackerId);
+            if (!existing) return; // should not happen due to earlier check
+            existing.selector = msg.picked.selector;
+            existing.anchor = msg.picked.anchor || null;
+            delete existing.lastFailure;
+          });
           let derivation = null;
-          await setStore(TRACKERS_KEY, trackers);
           const parsed = parseBalance(msg.picked.text);
           await recordReading(tracker.id, {
             value: parsed.value, unit: parsed.unit,
@@ -444,8 +457,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: true, tracker: await addTracker(msg) });
         break;
       case "ebt:delete-tracker": {
-        const trackers = await getStore(TRACKERS_KEY, []);
-        await setStore(TRACKERS_KEY, trackers.filter((t) => t.id !== msg.id));
+        await updateTrackers((trackers) => {
+          const idx = trackers.findIndex((t) => t.id === msg.id);
+          if (idx !== -1) trackers.splice(idx, 1);
+        });
         sendResponse({ ok: true });
         break;
       }
