@@ -66,6 +66,17 @@ export function isUnverified(t) {
 }
 
 /**
+ * @param {object} t - tracker object.
+ * @returns {"empty"|"stale"|"unverified"|"ok"}
+ */
+export function rowState(t) {
+  if (!t.history || t.history.length === 0) return "empty";
+  if (isStale(t)) return "stale";
+  if (isUnverified(t)) return "unverified";
+  return "ok";
+}
+
+/**
  * Short meta line for a tracker row: relative time only.
  * @param {Object} t - Tracker object.
  * @returns {string} e.g. "5 min ago" or "never read".
