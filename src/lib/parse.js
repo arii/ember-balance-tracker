@@ -105,10 +105,10 @@ function parseCore(rawIn) {
 
   // "4,000 credits" / "127 CR" / "10 points" (number first, unit word after).
   // No sign here: in "Range 5-10 credits" the hyphen is a range separator.
-  const unitAfter = raw.match(new RegExp(NUMBER + "\\s*(credits?|points?|tokens?|CR|cr|hrs?|hours?|minutes?|GB|MB|%)(?![A-Za-z])"));
+  const unitAfter = raw.match(new RegExp("(?:(?<![\\w$€£.,#])(?<!\\d\\s)(-))?([\\d.,]+)\\s*(credits?|points?|tokens?|CR|cr|hrs?|hours?|minutes?|GB|MB|%)(?![A-Za-z])"));
   if (unitAfter) {
-    const value = normalizeNumber(unitAfter[1]);
-    if (value !== null) return { ok: true, value, unit: unitAfter[2], raw: raw0, kind: "unit" };
+    const value = normalizeNumber(unitAfter[2]);
+    if (value !== null) return { ok: true, value: unitAfter[1] ? -value : value, unit: unitAfter[3], raw: raw0, kind: "unit" };
   }
 
   // "Balance: 100.05" / "Balance: -100" bare number last resort. A leading
