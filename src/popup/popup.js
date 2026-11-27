@@ -225,14 +225,17 @@ async function autoRead() {
   await render();
   const results = [];
   for (const t of mine) {
-    results.push((await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: t.id, tabId: tab.id })) || { ok: false });
+    results.push((await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: t.id, tabId: tab.id, auto: true })) || { ok: false });
     reading.delete(t.id);
     await render();
   }
   reading = new Set();
   await render();
   const failed = results.find((r) => !r.ok);
-  if (failed) status(`${autoReadSummary(results)} ${describeReadFailure(failed.reason, "A balance")}`, true);
+  if (failed) {
+    const hint = failed.reason === "unparseable" ? " Automatic reads are local only; press Refresh to let Ember AI try if you turned it on." : "";
+    status(`${autoReadSummary(results)} ${describeReadFailure(failed.reason, "A balance")}${hint}`, true);
+  }
   else status(autoReadSummary(results));
 }
 
