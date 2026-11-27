@@ -5,7 +5,7 @@
 // from web_accessible_resources; balance parsing happens in the service worker.
 if (!globalThis.__ebtContentInstalled) {
 globalThis.__ebtContentInstalled = true;
-const EBT_CONTENT_BUILD = "2026-11-26-a";
+const EBT_CONTENT_BUILD = "2026-11-26-b";
 const HIGHLIGHT_CLASS = "ebt-picker-highlight";
 
 function ebtAnchor(el) {
