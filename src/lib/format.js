@@ -11,22 +11,38 @@ export function formatValue(last) {
   }
   const value = last.value;
   const unit = last.unit;
+
+  // Determine number formatting options per unit.
+  let opts;
   if (unit === '$') {
-    // Currency: always exactly 2 decimals, thousands separators.
-    const formatted = value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `$${formatted}`;
+    opts = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  } else {
+    opts = { maximumFractionDigits: 2 };
+  }
+
+  // Get the raw number string, e.g. "-5.20" or "-0.00" or "1,500".
+  let numStr = value.toLocaleString('en-US', opts);
+
+  // Remove a leading minus when the displayed rounded value is zero.
+  // Works for "-0", "-0.00", "-0.00", etc.
+  if (numStr.startsWith('-') && Number.parseFloat(numStr) === 0) {
+    numStr = numStr.slice(1);
+  }
+
+  if (unit === '$') {
+    // Currency: sign goes before the currency symbol, and always 2 decimals.
+    if (numStr.startsWith('-')) {
+      return `-$${numStr.slice(1)}`;
+    }
+    return `$${numStr}`;
   }
   if (unit === '%') {
-    // Percent: no space before %, keep up to 2 decimals.
-    const formatted = value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    return `${formatted}%`;
+    return `${numStr}%`;
   }
-  // Other units: keep space, up to 2 decimals.
-  const formatted = value.toLocaleString('en-US', { maximumFractionDigits: 2 });
   if (unit) {
-    return `${formatted} ${unit}`;
+    return `${numStr} ${unit}`;
   }
-  return formatted;
+  return numStr;
 }
 
 /**
