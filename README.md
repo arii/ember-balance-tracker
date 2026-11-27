@@ -14,8 +14,14 @@ Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hack
 3. Later, click **Read now** to re-read the value. Readings are kept in a local history.
    If you're on another tab, it finds your dashboard's open tab and switches to it.
 
+A tracker saves the number's visible label as an anchor. On every read the extension re-finds that label; if the page layout changes and the number moves, it either heals to the right number (label found once) or refuses and shows the last value marked "Stale: needs attention" (label missing or more than one match). It never silently shows a different number.
+
 If a learned read fails (page changed, session expired), the extension asks you to
 refresh the page or re-teach it.
+
+## Trackers from older versions
+
+Trackers created before anchors keep their history but show "unverified". Each such row has a Re-track button - click it on that tracker's own site, then click the number once. It keeps the tracker id, label and history, installs the anchor, and is rejected if the page origin differs. "Track this balance" still creates a separate new tracker; nothing is merged by label.
 
 ## The Muse Ember role (hybrid by design)
 
@@ -35,6 +41,10 @@ The AI fallback is **off by default**. Enable it in Options with your own Meta M
 API key. Every call is recorded with token usage and estimated cost in a local
 **usage trace** (Options > Export trace JSON) - the hackathon's proof-of-usage artifact.
 
+## What is verified and what is not
+
+418 unit tests pass (npm test, build 2026-11-26-b). Real-Chrome e2e with the real toolbar passes on a replica of a billing page (swapped tiles heal, an inserted second Balance card is refused as stale). NOT verified: live provider sites (the cloud browser cannot load the extension), so a real Chrome session is the live check; two numbers with the same label cause a refusal by design.
+
 ## Privacy
 
 - Permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions, no
@@ -51,7 +61,7 @@ Zero-dependency vanilla MV3 - no build step; judges read the source as-is.
 
 ```bash
 npm install     # dev tools only (jsdom, puppeteer)
-npm test        # unit tests: parsing, selectors, regex safety, consent, mock API, trace math, multi-frame reads, fixture-driven extraction
+npm test        # unit tests: parsing, selectors, regex safety, consent, mock API, trace math, multi-frame reads, fixture-driven extraction, anchor verification, stale handling, Re-track
 npm run e2e     # real Chrome: loads the unpacked extension, runs the train/read flow
 npm run demo    # serves demo/index.html (mock billing page) on :8797
 ```
