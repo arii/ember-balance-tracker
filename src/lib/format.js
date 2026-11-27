@@ -46,6 +46,26 @@ export function relativeTime(ts, now = Date.now()) {
 }
 
 /**
+ * True if the tracker has a last failure newer than its last successful read.
+ * @param {Object} t - Tracker object.
+ * @returns {boolean}
+ */
+export function isStale(t) {
+  const last = t.history?.[t.history.length - 1];
+  return Boolean(t.lastFailure && last && t.lastFailure.ts > last.ts);
+}
+
+/**
+ * True if the last reading exists but is unverified and the tracker has no anchor.
+ * @param {Object} t - Tracker object.
+ * @returns {boolean}
+ */
+export function isUnverified(t) {
+  const last = t.history?.[t.history.length - 1];
+  return Boolean(last && last.verified === false && !t.anchor);
+}
+
+/**
  * Short meta line for a tracker row: relative time only.
  * @param {Object} t - Tracker object.
  * @returns {string} e.g. "5 min ago" or "never read".
@@ -53,7 +73,10 @@ export function relativeTime(ts, now = Date.now()) {
 export function formatMeta(t) {
   const last = t.history?.[t.history.length - 1];
   if (!last) return 'never read';
-  return relativeTime(last.ts);
+  if (isStale(t)) return `Stale: ${relativeTime(last.ts)} - needs attention`;
+  let result = relativeTime(last.ts);
+  if (isUnverified(t)) result += ' - unverified';
+  return result;
 }
 
 /**
@@ -78,5 +101,7 @@ export function titleFor(t) {
   } else {
     lines.push('Ember: off');
   }
+  if (isStale(t)) lines.push(`Last read failed: ${t.lastFailure.reason}`);
+  if (isUnverified(t)) lines.push('Unverified: no label saved, retrain to enable checks');
   return lines.join('\n');
 }
