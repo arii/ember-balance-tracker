@@ -11,7 +11,10 @@ const UNIT_WORDS = [
 const NUMBER = "([\\d.,]+)";
 
 function normalizeNumber(raw) {
-  const cleaned = String(raw).trim().replace(/^[.,\s]+|[.,\s]+$/g, "");
+  const trimmed = String(raw).trim();
+  const dotOnly = trimmed.match(/^\.(\d+)$/);
+  if (dotOnly) return Number("0." + dotOnly[1]);
+  const cleaned = trimmed.replace(/^[.,\s]+|[.,\s]+$/g, "");
   if (!cleaned) return null;
   // Decimal-comma with dot thousands: "12.890,50" / "1.234.567,89" (pt-BR, EU).
   let m = cleaned.match(/^(\d{1,3}(?:\.\d{3})+),(\d{1,2})$/);
@@ -55,7 +58,10 @@ export function parseBalance(text) {
 // space and a trailing letter, so it never matches the suffix rule.
 function prepare(raw) {
   return raw
+    .replace(/−/g, "-")
+    .replace(/([$€£])\s?-(?=\d)/g, "-$1")
     .replace(/(\d)['’](?=\d{3}(?!\d))/g, "$1")
+    .replace(/(?<![0-9.,])(\d{1,3}(?: \d{3})+)(?=(?:\D|$)|\.\d{1,2}(?!\d))/g, (all, num) => num.replace(/ /g, ""))
     .replace(/(\d[\d.,]*)([kKM])(?![A-Za-z\d])/g, (all, num, suf) => {
       const n = normalizeNumber(num);
       if (n === null) return all;
@@ -68,12 +74,23 @@ function parseCore(rawIn) {
   const raw = prepare(rawIn);
 
   // "0 of 20,000 credits used" / "500 / 2000 credits"
-  const usedOf = raw.match(new RegExp(NUMBER + "\\s*(?:of|\\/)\\s*" + NUMBER + "\\s*([A-Za-z%]+)?", "i"));
-  if (usedOf) {
-    const used = normalizeNumber(usedOf[1]);
-    const total = normalizeNumber(usedOf[2]);
-    if (used !== null && total !== null && total > 0) {
-      return { ok: true, value: used, total, unit: usedOf[3] || null, raw: raw0, kind: "used-of-total" };
+  const usedOfPattern = NUMBER + "\\s*(?:of|\\/)\\s*" + NUMBER + "\\s*([A-Za-z%]+)?";
+  const usedOfMatches = [...raw.matchAll(new RegExp(usedOfPattern, "gi"))];
+  if (usedOfMatches.length) {
+    for (const m of usedOfMatches) {
+      const used = normalizeNumber(m[1]);
+      const total = normalizeNumber(m[2]);
+      if (used === null || total === null || total <= 0) continue;
+      const yearFirst = m[0].includes("/") && /^(19|20)\d{2}$/.test(m[1]) && /^\d{1,2}$/.test(m[2]) && Number(m[2]) <= 12;
+      const mdLike = m[0].includes("/") &&
+        /^\d{1,2}$/.test(m[1]) && /^\d{1,2}$/.test(m[2]) &&
+        Number(m[1]) <= 12 && Number(m[2]) <= 31 &&
+        (/^\/\d/.test(raw.slice(m.index + m[0].length)) || (!m[3] && raw.trim() !== m[0].trim()) ||
+          (m[3] && !/^(credits?|tokens?|requests?|calls?|messages?|minutes?|mins?|hours?|gb|mb|tb|kb|%|used|left|remaining|units?|queries|searches|images?|seats?|points?|pts|days?)$/i.test(m[3])));
+      const dateLike = yearFirst || mdLike;
+      if (!dateLike) {
+        return { ok: true, value: used, total, unit: m[3] || null, raw: raw0, kind: "used-of-total" };
+      }
     }
   }
 
