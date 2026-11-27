@@ -29,12 +29,13 @@ async function setSession(key, value) {
   await chrome.storage.session.set({ [key]: value });
 }
 
-async function addTracker({ label, selector, url, pattern = null }) {
+async function addTracker({ label, selector, anchor = null, url, pattern = null }) {
   const trackers = await getStore(TRACKERS_KEY, []);
   const tracker = {
     id: crypto.randomUUID(),
     label,
     selector,
+    anchor,
     pattern, // model-derived deterministic extraction regex, validated at training time
     urlPattern: new URL(url).origin,
     createdAt: new Date().toISOString(),
@@ -134,8 +135,18 @@ async function recordReading(trackerId, reading) {
   const trackers = await getStore(TRACKERS_KEY, []);
   const t = trackers.find((x) => x.id === trackerId);
   if (!t) return null;
-  t.history.push({ ts: new Date().toISOString(), ...reading });
+  t.history.push({ ts: new Date().toISOString(), verified: false, healed: false, ...reading });
   if (t.history.length > 500) t.history = t.history.slice(-500);
+  delete t.lastFailure;
+  await setStore(TRACKERS_KEY, trackers);
+  return t;
+}
+
+async function recordFailure(trackerId, reason) {
+  const trackers = await getStore(TRACKERS_KEY, []);
+  const t = trackers.find((x) => x.id === trackerId);
+  if (!t) return null;
+  t.lastFailure = { ts: new Date().toISOString(), reason };
   await setStore(TRACKERS_KEY, trackers);
   return t;
 }
@@ -169,12 +180,83 @@ export async function armAllFrames(tabId) {
 
 // Self-contained: serialized into every frame by scripting.executeScript,
 // so these must not close over module scope.
-function readAtFunc(selector) {
+function ebtAnchor(el) {
+  const normalize = (s) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const ownText = normalize(el.innerText || el.textContent || "");
+  let ancestor = el.parentElement;
+  for (let i = 0; i < 4 && ancestor; i++) {
+    const lines = [];
+    const walk = (node) => {
+      if (node.nodeType === 3) {
+        const t = normalize(node.textContent);
+        if (t) lines.push(t);
+      } else if (node.nodeType === 1) {
+        for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
+      }
+    };
+    walk(ancestor);
+    for (const line of lines) {
+      if (line !== ownText && line.length <= 60 && /[a-z]/.test(line) && !/^[\s$€£%0-9.,+\-()kKmM]*$/.test(line)) {
+        return line;
+      }
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return null;
+}
+
+function readAtFunc(selector, anchor) {
+  function ebtAnchor(el) {
+    const normalize = (s) => s.replace(/\s+/g, " ").trim().toLowerCase();
+    const ownText = normalize(el.innerText || el.textContent || "");
+    let ancestor = el.parentElement;
+    for (let i = 0; i < 4 && ancestor; i++) {
+      const lines = [];
+      const walk = (node) => {
+        if (node.nodeType === 3) {
+          const t = normalize(node.textContent);
+          if (t) lines.push(t);
+        } else if (node.nodeType === 1) {
+          for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
+        }
+      };
+      walk(ancestor);
+      for (const line of lines) {
+        if (line !== ownText && line.length <= 60 && /[a-z]/.test(line) && !/^[\s$€£%0-9.,+\-()kKmM]*$/.test(line)) {
+          return line;
+        }
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return null;
+  }
   const el = document.querySelector(selector);
+  const text = el ? (el.innerText || el.textContent || "").trim() : "";
+  if (anchor) {
+    const candidates = [];
+    const all = document.querySelectorAll("*");
+    for (const c of all) {
+      if (!c.children.length) {
+        const t = (c.innerText || c.textContent || "").trim();
+        if (t && /\d/.test(t) && /^[\s$€£+-]*\d[\d.,]*\s*[a-z%]{0,12}(\s+[a-z]{1,12})?$/i.test(t.trim()) && ebtAnchor(c) === anchor) {
+          candidates.push(c);
+        }
+      }
+    }
+    if (candidates.length > 1) {
+      return { ok: false, reason: "anchor-ambiguous" };
+    }
+    if (el && text && ebtAnchor(el) === anchor && (candidates.length === 0 || (candidates.length === 1 && candidates[0] === el))) {
+      return { ok: true, text, verified: true };
+    }
+    if (candidates.length === 1) {
+      return { ok: true, text: (candidates[0].innerText || candidates[0].textContent || "").trim(), verified: true, healed: true };
+    }
+    return { ok: false, reason: el ? "anchor-mismatch" : "selector-not-found" };
+  }
   if (!el) return { ok: false, reason: "selector-not-found" };
-  const text = (el.innerText || el.textContent || "").trim();
   if (!text) return { ok: false, reason: "empty" };
-  return { ok: true, text };
+  return { ok: true, text, verified: false };
 }
 
 function pageTextFunc(maxChars) {
@@ -186,7 +268,7 @@ function pageTextFunc(maxChars) {
 // frame wins; otherwise the most informative failure wins. Exported for tests.
 export function pickFrameResult(results) {
   if (!Array.isArray(results) || results.length === 0) return { ok: false, reason: "no-frames" };
-  for (const r of results) if (r?.result?.ok) return { ok: true, text: r.result.text };
+  for (const r of results) if (r?.result?.ok) return { ok: true, text: r.result.text, verified: !!r.result.verified, healed: !!r.result.healed };
   const other = results.map((r) => r?.result).find((x) => x && !x.ok && x.reason !== "selector-not-found");
   if (other) return { ok: false, reason: other.reason || "read-failed" };
   return { ok: false, reason: "selector-not-found" };
@@ -218,10 +300,11 @@ async function readTracker(trackerId, tabId) {
   let res;
   try {
     const results = await chrome.scripting.executeScript({
-      target: { tabId, allFrames: true }, func: readAtFunc, args: [t.selector],
+      target: { tabId, allFrames: true }, func: readAtFunc, args: [t.selector, t.anchor || null],
     });
     res = pickFrameResult(results);
   } catch {
+    await recordFailure(trackerId, "inject-failed");
     return { ok: false, reason: "inject-failed" };
   }
 
@@ -247,13 +330,16 @@ async function readTracker(trackerId, tabId) {
       },
     });
     await settleReservation(result, { trackerId });
-    if (!result.ok) return result;
-    await recordReading(trackerId, { value: result.parsed.value, unit: result.parsed.unit, raw: result.parsed.raw, source: result.source });
-    return { ok: true, source: result.source, parsed: result.parsed };
+    if (!result.ok) {
+      await recordFailure(trackerId, result.reason || "read-failed");
+      return result;
+    }
+    await recordReading(trackerId, { value: result.parsed.value, unit: result.parsed.unit, raw: result.parsed.raw, source: result.source, verified: res.verified, healed: res.healed });
+    return { ok: true, source: result.source, parsed: result.parsed, verified: res.verified, healed: res.healed };
   }
 
-  // The trained selector no longer resolves: report the honest re-teach state.
-  return { ok: false, reason: res?.reason || "read-failed", needsRefresh: res?.reason === "selector-not-found" };
+  await recordFailure(trackerId, res?.reason || "read-failed");
+  return { ok: false, reason: res?.reason || "read-failed", needsRefresh: res?.reason === "selector-not-found" || res?.reason === "anchor-mismatch" };
 }
 
 
@@ -288,7 +374,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
         await setSession(PENDING_KEY, null);
-        const tracker = await addTracker({ label: pending.label, selector: msg.picked.selector, url: msg.picked.url });
+        const tracker = await addTracker({ label: pending.label, selector: msg.picked.selector, anchor: msg.picked.anchor || null, url: msg.picked.url });
         await recordReading(tracker.id, {
           value: parseBalance(msg.picked.text).value, unit: parseBalance(msg.picked.text).unit,
           raw: msg.picked.text, source: "training",
