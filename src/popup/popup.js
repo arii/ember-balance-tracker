@@ -1,6 +1,7 @@
 // Popup: train a new tracker on the active tab, read existing trackers.
 import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
+import { formatValue, formatMeta, titleFor } from "../lib/format.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -14,15 +15,6 @@ async function activeTab() {
   return tab;
 }
 
-function fmtReading(t) {
-  const last = t.history?.[t.history.length - 1];
-  if (!last) return "never read";
-  const unit = last.unit ? ` ${last.unit === "$" ? "" : last.unit}` : "";
-  const val = last.unit === "$" ? `$${last.value}` : `${last.value}${unit}`;
-  const when = new Date(last.ts).toLocaleString();
-  return `${val} · ${when} · via ${last.source}`;
-}
-
 async function render() {
   const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
   const list = $("#tracker-list");
@@ -30,9 +22,20 @@ async function render() {
   $("#empty").style.display = trackers.length ? "none" : "block";
   for (const t of trackers) {
     const li = document.createElement("li");
+    li.title = titleFor(t);
     const label = document.createElement("span");
     label.className = "t-label";
     label.textContent = t.label;
+    const value = document.createElement("span");
+    value.className = "t-value";
+    const last = t.history?.[t.history.length - 1];
+    value.textContent = formatValue(last);
+    if (!last) {
+      value.classList.add("no-reading");
+    }
+    const meta = document.createElement("span");
+    meta.className = "t-meta";
+    meta.textContent = last ? formatMeta(t) : "";
     const actions = document.createElement("span");
     actions.className = "t-actions";
     const readBtn = document.createElement("button");
@@ -47,10 +50,7 @@ async function render() {
       render();
     });
     actions.append(readBtn, delBtn);
-    const meta = document.createElement("span");
-    meta.className = "t-meta";
-    meta.textContent = `${t.urlPattern} · ${fmtReading(t)}${t.pattern ? " · Ember rule ✓" : t.emberStatus && !t.emberStatus.ok ? ` · Ember: no rule learned (${t.emberStatus.reason}); reads use the saved page element` : ""}`;
-    li.append(label, actions, meta);
+    li.append(label, value, meta, actions);
     list.appendChild(li);
   }
 }
@@ -75,7 +75,7 @@ async function readTracker(t) {
   const res = await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: t.id, tabId: tab.id });
   if (res?.ok) {
     const p = res.parsed;
-    status(`${t.label}: ${p.unit === "$" ? "$" + p.value : p.value + (p.unit ? " " + p.unit : "")} (via ${res.source})`);
+    status(`${t.label}: ${formatValue(p)} (via ${res.source})`);
     render();
   } else if (res?.needsRefresh) {
     status(`Can't find the balance on this page. Refresh the page (sign in if asked), then try again.`, true);
