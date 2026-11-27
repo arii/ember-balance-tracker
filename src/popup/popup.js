@@ -1,7 +1,7 @@
 // Popup: train a new tracker on the active tab, read existing trackers.
 import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
-import { formatValue, formatMeta, titleFor, isStale, isUnverified } from "../lib/format.js";
+import { formatValue, formatMeta, titleFor, isStale, isUnverified, rowState } from "../lib/format.js";
 import { describeReadFailure } from "../lib/messages.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -24,6 +24,7 @@ async function render() {
   for (const t of trackers) {
     const li = document.createElement("li");
     li.title = titleFor(t);
+    li.classList.add(`row-${rowState(t)}`);
     const label = document.createElement("span");
     label.className = "t-label";
     label.textContent = t.label;

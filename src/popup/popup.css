@@ -23,10 +23,16 @@ footer { padding: 8px 14px 12px; }
 #status.error { color: #b91c1c; }
 #ember-line { margin: 6px 0 0; }
 #ember-line a { color: inherit; }
+.row-stale .t-value { color: #6b7280; }
+.row-stale .t-meta, .t-meta.stale { color: #b45309; font-weight: 600; }
+.row-unverified .t-meta { color: #b45309; }
 @media (prefers-color-scheme: dark) {
   body { background: #111827; color: #f9fafb; }
   #label { background: #1f2937; color: #f9fafb; border-color: #374151; }
   button { background: #f59e0b; color: #111827; }
   button.secondary { background: #374151; color: #f9fafb; }
   #tracker-list li { border-top-color: #374151; }
+.row-stale .t-meta, .t-meta.stale, .row-unverified .t-meta { color: #fbbf24; }
+  .row-stale .t-value { color: #9ca3af; }
+  #status.error { color: #f87171; }
 }
