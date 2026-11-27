@@ -1,5 +1,6 @@
 // Popup: train a new tracker on the active tab, read existing trackers.
 import { summarizeTrace } from "../lib/trace.js";
+import { BUILD_ID } from "../lib/build.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -91,6 +92,8 @@ $("#train-btn").addEventListener("click", async () => {
   // Arm and close: the background completes the pick, stores the tracker,
   // and (if enabled) asks Muse Ember for a reusable extraction regex.
   try {
+    const version = await chrome.runtime.sendMessage({ type: "ebt:version" });
+    if (!version?.ok || version.build !== BUILD_ID) return status("Ember was updated but is still running old code. Open chrome://extensions, click reload on Ember, then try again.", true);
     const result = await chrome.runtime.sendMessage({ type: "ebt:arm-training", tabId: tab.id, label });
     if (!result?.ok || !result.armed) return status(`Could not start picker: ${result?.reason || "no accessible frame"}.`, true);
     window.close();
