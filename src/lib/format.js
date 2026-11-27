@@ -56,13 +56,13 @@ export function isStale(t) {
 }
 
 /**
- * True if the last reading exists but is unverified and the tracker has no anchor.
+ * True if the tracker has at least one history entry and no anchor.
  * @param {Object} t - Tracker object.
  * @returns {boolean}
  */
 export function isUnverified(t) {
   const last = t.history?.[t.history.length - 1];
-  return Boolean(last && last.verified === false && !t.anchor);
+  return Boolean(last && !t.anchor);
 }
 
 /**
