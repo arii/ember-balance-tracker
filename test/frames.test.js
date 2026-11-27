@@ -27,7 +27,7 @@ test("a hit in any frame wins over misses in other frames", () => {
     { frameId: 0, result: { ok: false, reason: "selector-not-found" } },
     { frameId: 1, result: { ok: true, text: "$106.34" } },
   ]);
-  assert.deepEqual(res, { ok: true, text: "$106.34" });
+  assert.deepEqual(res, { ok: true, text: "$106.34", verified: false, healed: false });
 });
 
 test("first-frame hit wins without waiting for other frames", () => {
@@ -35,7 +35,7 @@ test("first-frame hit wins without waiting for other frames", () => {
     { frameId: 0, result: { ok: true, text: "$0.00" } },
     { frameId: 1, result: { ok: false, reason: "selector-not-found" } },
   ]);
-  assert.deepEqual(res, { ok: true, text: "$0.00" });
+  assert.deepEqual(res, { ok: true, text: "$0.00", verified: false, healed: false });
 });
 
 test("all frames missing is the honest re-teach state", () => {
