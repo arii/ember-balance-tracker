@@ -3,6 +3,7 @@ import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
 import { formatValue, formatMeta, titleFor, isStale, isUnverified, rowState } from "../lib/format.js";
 import { describeReadFailure } from "../lib/messages.js";
+import { trackersForTab, readButtonLabel, autoReadSummary } from "../lib/autoread.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -16,8 +17,11 @@ async function activeTab() {
   return tab;
 }
 
+let reading = new Set();
+
 async function render() {
   const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
+  const tabNow = await activeTab();
   const list = $("#tracker-list");
   list.innerHTML = "";
   $("#empty").style.display = trackers.length ? "none" : "block";
@@ -34,6 +38,7 @@ async function render() {
     value.textContent = formatValue(last);
     if (!last) {
       value.classList.add("no-reading");
+      if (reading.has(t.id)) value.textContent = "Reading...";
     }
     const meta = document.createElement("span");
     meta.className = "t-meta";
@@ -43,7 +48,8 @@ async function render() {
     actions.className = "t-actions";
     const readBtn = document.createElement("button");
     readBtn.className = "secondary";
-    readBtn.textContent = "Read now";
+    readBtn.textContent = reading.has(t.id) ? "Reading..." : readButtonLabel(t, tabNow?.url);
+    readBtn.disabled = reading.has(t.id);
     readBtn.addEventListener("click", () => readTracker(t));
     const retrainBtn = document.createElement("button");
     retrainBtn.className = "secondary";
@@ -119,7 +125,7 @@ async function readTracker(t) {
     const tabs = await chrome.tabs.query({});
     const found = tabs.find((x) => x.url?.startsWith(t.urlPattern));
     if (!found?.id) return status(`Open ${t.urlPattern} first (sign in if needed), then read again.`, true);
-    await chrome.storage.session.set({ ebtNotice: `Found your ${t.label} tab — click "Read now" to read it.` });
+    await chrome.storage.session.set({ ebtNotice: `Found your ${t.label} tab. Click the Ember icon there and it reads automatically.` });
     await chrome.tabs.update(found.id, { active: true });
     if (found.windowId !== undefined) await chrome.windows.update(found.windowId, { focused: true }).catch(() => {});
     return;
@@ -184,6 +190,29 @@ async function showNotice() {
   }
 }
 
+// Read on open: the icon click granted this tab, so every tracker for it is
+// read now without another click. Other tabs stay unread until opened.
+async function autoRead() {
+  const tab = await activeTab();
+  const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
+  const mine = trackersForTab(trackers, tab?.url);
+  if (!tab?.id || !mine.length) return;
+  reading = new Set(mine.map((t) => t.id));
+  status(`Reading ${mine.length} balance${mine.length === 1 ? "" : "s"}...`);
+  await render();
+  const results = [];
+  for (const t of mine) {
+    results.push((await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: t.id, tabId: tab.id })) || { ok: false });
+    reading.delete(t.id);
+    await render();
+  }
+  reading = new Set();
+  await render();
+  const failed = results.find((r) => !r.ok);
+  if (failed) status(`${autoReadSummary(results)} ${describeReadFailure(failed.reason, "A balance")}`, true);
+  else status(autoReadSummary(results));
+}
+
 render();
 renderEmberLine();
-showNotice();
+showNotice().then(autoRead);
