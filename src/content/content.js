@@ -5,6 +5,7 @@
 // from web_accessible_resources; balance parsing happens in the service worker.
 if (!globalThis.__ebtContentInstalled) {
 globalThis.__ebtContentInstalled = true;
+const EBT_CONTENT_BUILD = "2026-11-26-a";
 const HIGHLIGHT_CLASS = "ebt-picker-highlight";
 let training = null; // { resolve } while picking
 
@@ -118,7 +119,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (picked) {
             toast("Balance picked — saving…", 2000);
             chrome.runtime.sendMessage({ type: "ebt:picked", picked })
-        .then((r) => { if (!r?.ok) toast("Training failed to save: " + (r?.reason || "no response"), 6000); })
+        .then((r) => {
+          if (!r?.ok) {
+            if (r?.reason === "unknown-message") {
+              toast("Ember is out of date: open chrome://extensions, click reload on Ember, then refresh this page and try again.", 6000);
+            } else {
+              toast("Training failed to save: " + (r?.reason || "no response"), 6000);
+            }
+          }
+        })
         .catch((e) => toast("Training failed to save: " + String(e?.message || e), 6000));
           } else {
             chrome.runtime.sendMessage({ type: "ebt:pick-cancelled" }).catch(() => {});

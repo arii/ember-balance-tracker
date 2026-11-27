@@ -1,6 +1,7 @@
 // Service worker: storage CRUD, message routing, optional Ember fallback, trace log.
 
 import { parseBalance } from "./lib/parse.js";
+import { BUILD_ID } from "./lib/build.js";
 import { learnPattern, readWithFallback } from "./lib/fallback.js";
 import { budgetAllows, worstCaseCost, TRACE_MODEL, MAX_TIER_BODY_BYTES } from "./lib/trace.js";
 
@@ -263,6 +264,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg?.type) {
       case "ebt:list":
         sendResponse({ ok: true, trackers: await getStore(TRACKERS_KEY, []) });
+        break;
+      case "ebt:version":
+        sendResponse({ ok: true, build: BUILD_ID });
         break;
       case "ebt:arm-training": {
         // Await arming before acknowledging success. The popup stays open on
