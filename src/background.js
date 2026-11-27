@@ -327,6 +327,7 @@ async function readTracker(trackerId, tabId) {
       settings,
       label: t.label,
       preSend: reserveForSend,
+      lastUnit: [...(t.history || [])].reverse().find((h) => h && h.unit)?.unit ?? null,
       getPageText: async () => {
         if (pageText === undefined) {
           const samples = await chrome.scripting.executeScript({

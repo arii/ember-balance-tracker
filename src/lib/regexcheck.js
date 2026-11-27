@@ -116,13 +116,32 @@ export function safeCompile(pattern) {
  * Input is capped at MAX_INPUT_LEN before matching. Uses the first capture
  * group when present, else the full match.
  */
-export function extractWithPattern(text, pattern) {
+export function extractWithPattern(text, pattern, opts = {}) {
   const re = safeCompile(pattern);
   if (!re || typeof text !== "string") return { ok: false, reason: "bad-pattern" };
   const input = text.length > MAX_INPUT_LEN ? text.slice(0, MAX_INPUT_LEN) : text;
   const m = input.match(re);
   if (!m) return { ok: false, reason: "no-match" };
-  const parsed = parseBalance(m[1] ?? m[0]);
+  const captured = m[1] ?? m[0];
+  let parsed = parseBalance(captured);
+  if (parsed.ok && parsed.unit === null && m[0] && m[0] !== captured) {
+    const fullParsed = parseBalance(m[0]);
+    if (fullParsed.ok && fullParsed.unit !== null && fullParsed.value === parsed.value) {
+      parsed = { ...parsed, unit: fullParsed.unit, kind: fullParsed.kind };
+    }
+  }
+  if (parsed.ok && parsed.unit === null) {
+    const full = parseBalance(input);
+    if (full.ok && full.kind === "used-of-total") {
+      // Page itself expresses used-of-total; do not inherit any unit.
+    } else if (full.ok && full.unit !== null && full.value === parsed.value) {
+      parsed = { ...parsed, unit: full.unit, kind: full.kind };
+    } else if (full.ok && full.unit !== null) {
+      // Another unit/value on the page; avoid attaching a wrong unit.
+    } else if (typeof opts.unit === 'string' && opts.unit.length > 0) {
+      parsed = { ...parsed, unit: opts.unit, kind: opts.unit === '$' ? 'currency' : 'unit' };
+    }
+  }
   return parsed.ok ? { ...parsed, matched: m[0] } : { ok: false, reason: "matched-unparseable", matched: m[0] };
 }
 

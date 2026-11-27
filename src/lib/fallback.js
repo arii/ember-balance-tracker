@@ -19,9 +19,9 @@ export async function learnPattern({ settings, label, trainingText, call = deriv
   return { ok: true, pattern: check.pattern, trace: ai.trace };
 }
 
-export async function readWithFallback({ text, pageText, getPageText, pattern, settings, label, call = findBalanceWithEmber, preSend }) {
+export async function readWithFallback({ text, pageText, getPageText, pattern, settings, label, lastUnit = null, call = findBalanceWithEmber, preSend }) {
   if (pattern) {
-    const learned = extractWithPattern(text, pattern);
+    const learned = extractWithPattern(text, pattern, { unit: lastUnit });
     if (learned.ok) return { ok: true, source: "pattern", parsed: learned };
   }
   const parsed = parseBalance(text);
