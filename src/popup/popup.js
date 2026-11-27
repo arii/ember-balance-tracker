@@ -2,6 +2,7 @@
 import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
 import { formatValue, formatMeta, titleFor, isStale, isUnverified } from "../lib/format.js";
+import { describeReadFailure } from "../lib/messages.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -105,13 +106,13 @@ async function readTracker(t) {
     status(`${t.label}: ${formatValue(p)} (via ${res.source})`);
     render();
   } else if (res?.reason === "anchor-mismatch" || res?.reason === "anchor-ambiguous") {
-    status(`Couldn't confirm the "${t.label}" number on this page (${res.reason}). Showing the last good value as stale.`, true);
+    status(describeReadFailure(res.reason, t.label), true);
     render();
   } else if (res?.needsRefresh) {
     status(`Can't find the balance on this page. Refresh the page (sign in if asked), then try again.`, true);
     render();
   } else {
-    status(`Couldn't read ${t.label}: ${res?.reason || "unknown error"}.`, true);
+    status(describeReadFailure(res?.reason, t.label), true);
     render();
   }
 }
