@@ -361,7 +361,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (prev && prev.tabId !== msg.tabId) {
           await chrome.tabs.sendMessage(prev.tabId, { type: "ebt:cancel-training" }).catch(() => {});
         }
-        await setSession(PENDING_KEY, { tabId: msg.tabId, label: msg.label, ts: Date.now() });
+        await setSession(PENDING_KEY, { tabId: msg.tabId, label: msg.label, trackerId: msg.trackerId || null, ts: Date.now() });
         const armResult = await armAllFrames(msg.tabId);
         if (!armResult.armed) await setSession(PENDING_KEY, null);
         sendResponse({ ok: armResult.armed, ...armResult, ...(!armResult.armed ? { reason: "no-accessible-frame" } : {}) });
@@ -374,18 +374,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
         await setSession(PENDING_KEY, null);
-        const tracker = await addTracker({ label: pending.label, selector: msg.picked.selector, anchor: msg.picked.anchor || null, url: msg.picked.url });
-        await recordReading(tracker.id, {
-          value: parseBalance(msg.picked.text).value, unit: parseBalance(msg.picked.text).unit,
-          raw: msg.picked.text, source: "training",
-        });
-        const derivation = await derivePattern(tracker.id, msg.picked.text);
-        // One toast in the main frame, then disarm every other frame's picker.
-        await chrome.tabs.sendMessage(pending.tabId, {
-          type: "ebt:trained", label: pending.label, pattern: derivation.ok ? derivation.pattern : null,
-        }, { frameId: 0 }).catch(() => {});
-        await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
-        sendResponse({ ok: true, trackerId: tracker.id });
+        if (pending.trackerId) {
+          const trackers = await getStore(TRACKERS_KEY, []);
+          const tracker = trackers.find(t => t.id === pending.trackerId);
+          if (!tracker) {
+            await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+            sendResponse({ ok: false, reason: "unknown-tracker" });
+            break;
+          }
+          if (new URL(msg.picked.url).origin !== tracker.urlPattern) {
+            await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+            sendResponse({ ok: false, reason: "origin-mismatch" });
+            break;
+          }
+          tracker.selector = msg.picked.selector;
+          tracker.anchor = msg.picked.anchor || null;
+          delete tracker.lastFailure;
+          // keep pattern! delete tracker.pattern is NOT done
+          let derivation = null;
+          await setStore(TRACKERS_KEY, trackers);
+          const parsed = parseBalance(msg.picked.text);
+          await recordReading(tracker.id, {
+            value: parsed.value, unit: parsed.unit,
+            raw: msg.picked.text, source: "retrain",
+            verified: !!tracker.anchor, healed: false,
+          });
+          if (!tracker.pattern) {
+            derivation = await derivePattern(tracker.id, msg.picked.text);
+          }
+          await chrome.tabs.sendMessage(pending.tabId, {
+            type: "ebt:trained", label: pending.label, pattern: derivation && derivation.ok ? derivation.pattern : null,
+          }, { frameId: 0 }).catch(() => {});
+          await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+          sendResponse({ ok: true, trackerId: tracker.id });
+        } else {
+          const tracker = await addTracker({ label: pending.label, selector: msg.picked.selector, anchor: msg.picked.anchor || null, url: msg.picked.url });
+          await recordReading(tracker.id, {
+            value: parseBalance(msg.picked.text).value, unit: parseBalance(msg.picked.text).unit,
+            raw: msg.picked.text, source: "training",
+          });
+          const derivation = await derivePattern(tracker.id, msg.picked.text);
+          await chrome.tabs.sendMessage(pending.tabId, {
+            type: "ebt:trained", label: pending.label, pattern: derivation.ok ? derivation.pattern : null,
+          }, { frameId: 0 }).catch(() => {});
+          await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+          sendResponse({ ok: true, trackerId: tracker.id });
+        }
         break;
       }
       case "ebt:pick-cancelled": {

@@ -28,8 +28,8 @@ test("isStale: false when lastFailure older than last read", () => {
   assert.equal(isStale(t), false);
 });
 
-test("isUnverified: true for legacy tracker", () => {
-  const t = { history: [{ ts: 1000, value: 1, verified: false }], anchor: null };
+test("isUnverified: true for legacy tracker without verified field", () => {
+  const t = { history: [{ ts: 1000, value: 1 }], anchor: null };
   assert.equal(isUnverified(t), true);
   const meta = formatMeta(t);
   assert.ok(meta.endsWith(" - unverified"));
@@ -37,6 +37,11 @@ test("isUnverified: true for legacy tracker", () => {
 
 test("isUnverified: false when anchor exists", () => {
   const t = { history: [{ ts: 1000, value: 1, verified: false }], anchor: "balance" };
+  assert.equal(isUnverified(t), false);
+});
+
+test("isUnverified: false when no history", () => {
+  const t = {};
   assert.equal(isUnverified(t), false);
 });
 

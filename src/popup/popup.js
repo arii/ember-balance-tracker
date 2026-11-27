@@ -1,7 +1,7 @@
 // Popup: train a new tracker on the active tab, read existing trackers.
 import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
-import { formatValue, formatMeta, titleFor } from "../lib/format.js";
+import { formatValue, formatMeta, titleFor, isStale, isUnverified } from "../lib/format.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -43,6 +43,32 @@ async function render() {
     readBtn.className = "secondary";
     readBtn.textContent = "Read now";
     readBtn.addEventListener("click", () => readTracker(t));
+    const retrainBtn = document.createElement("button");
+    retrainBtn.className = "secondary";
+    retrainBtn.textContent = "Re-track";
+    retrainBtn.addEventListener("click", async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.url?.startsWith(t.urlPattern)) {
+        status(`Open ${t.urlPattern} first, then click Re-track.`, true);
+        return;
+      }
+      try {
+        const v = await chrome.runtime.sendMessage({ type: "ebt:version" });
+        if (v.build !== BUILD_ID) {
+          status("The extension is still running old code. Reload it from chrome://extensions and try again.", true);
+          return;
+        }
+      } catch {
+        status("Could not verify extension version.", true);
+        return;
+      }
+      const res = await chrome.runtime.sendMessage({ type: "ebt:arm-training", tabId: tab.id, label: t.label, trackerId: t.id }).catch(() => null);
+      if (!res?.ok) {
+        status(`Could not start picker: ${res?.reason || "unknown error"}`, true);
+        return;
+      }
+      window.close();
+    });
     const delBtn = document.createElement("button");
     delBtn.className = "secondary";
     delBtn.textContent = "Delete";
@@ -50,7 +76,7 @@ async function render() {
       await chrome.runtime.sendMessage({ type: "ebt:delete-tracker", id: t.id });
       render();
     });
-    actions.append(readBtn, delBtn);
+    actions.append(readBtn, ...(isStale(t) || isUnverified(t) ? [retrainBtn] : []), delBtn);
     li.append(label, value, meta, actions);
     list.appendChild(li);
   }

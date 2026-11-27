@@ -46,7 +46,7 @@ test('relativeTime buckets', () => {
 });
 
 test('formatMeta returns relative time or never read', () => {
-  const t = { history: [{ ts: Date.now() - 5 * 60_000 }] };
+  const t = { anchor: 'balance', history: [{ ts: Date.now() - 5 * 60_000 }] };
   assert.equal(formatMeta(t), '5 min ago');
   assert.equal(formatMeta({ history: [] }), 'never read');
   assert.equal(formatMeta({}), 'never read');
