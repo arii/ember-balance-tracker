@@ -7,6 +7,31 @@ if (!globalThis.__ebtContentInstalled) {
 globalThis.__ebtContentInstalled = true;
 const EBT_CONTENT_BUILD = "2026-11-26-a";
 const HIGHLIGHT_CLASS = "ebt-picker-highlight";
+
+function ebtAnchor(el) {
+  const normalize = (s) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const ownText = normalize(el.innerText || el.textContent || "");
+  let ancestor = el.parentElement;
+  for (let i = 0; i < 4 && ancestor; i++) {
+    const lines = [];
+    const walk = (node) => {
+      if (node.nodeType === 3) {
+        const t = normalize(node.textContent);
+        if (t) lines.push(t);
+      } else if (node.nodeType === 1) {
+        for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
+      }
+    };
+    walk(ancestor);
+    for (const line of lines) {
+      if (line !== ownText && line.length <= 60 && /[a-z]/.test(line) && !/^[\s$€£%0-9.,+\-()kKmM]*$/.test(line)) {
+        return line;
+      }
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return null;
+}
 let training = null; // { resolve } while picking
 
 async function loadSelectorLib() {
@@ -59,8 +84,9 @@ async function onPick(e) {
   const getSelector = await loadSelectorLib();
   const selector = getSelector(el);
   const text = (el.innerText || el.textContent || "").trim();
+  const anchor = ebtAnchor(el);
   const done = training; training = null;
-  done?.resolve({ selector, text, url: location.href, title: document.title });
+  done?.resolve({ selector, anchor, text, url: location.href, title: document.title });
 }
 
 function cancelTraining() {

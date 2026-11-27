@@ -35,6 +35,7 @@ async function render() {
     }
     const meta = document.createElement("span");
     meta.className = "t-meta";
+    if (t.lastFailure && last && t.lastFailure.ts > last.ts) meta.classList.add("stale");
     meta.textContent = last ? formatMeta(t) : "";
     const actions = document.createElement("span");
     actions.className = "t-actions";
@@ -77,10 +78,15 @@ async function readTracker(t) {
     const p = res.parsed;
     status(`${t.label}: ${formatValue(p)} (via ${res.source})`);
     render();
+  } else if (res?.reason === "anchor-mismatch" || res?.reason === "anchor-ambiguous") {
+    status(`Couldn't confirm the "${t.label}" number on this page (${res.reason}). Showing the last good value as stale.`, true);
+    render();
   } else if (res?.needsRefresh) {
     status(`Can't find the balance on this page. Refresh the page (sign in if asked), then try again.`, true);
+    render();
   } else {
     status(`Couldn't read ${t.label}: ${res?.reason || "unknown error"}.`, true);
+    render();
   }
 }
 
