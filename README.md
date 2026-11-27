@@ -43,7 +43,7 @@ API key. Every call is recorded with token usage and estimated cost in a local
 
 ## What is verified and what is not
 
-426 unit tests pass (npm test, build 2026-11-26-c). Real-Chrome e2e with the real toolbar passes on a replica of a billing page (swapped tiles heal, an inserted second Balance card is refused as stale). NOT verified: live provider sites (the cloud browser cannot load the extension), so a real Chrome session is the live check; two numbers with the same label cause a refusal by design.
+426 unit tests pass (npm test, build 2026-11-26-d). Real-Chrome e2e with the real toolbar passes on a replica of a billing page (swapped tiles heal, an inserted second Balance card is refused as stale). NOT verified: live provider sites (the cloud browser cannot load the extension), so a real Chrome session is the live check; two numbers with the same label cause a refusal by design.
 
 ## Privacy
 
