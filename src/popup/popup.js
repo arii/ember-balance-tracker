@@ -3,7 +3,7 @@ import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
 import { formatValue, formatMeta, titleFor, isStale, isUnverified, rowState } from "../lib/format.js";
 import { describeReadFailure } from "../lib/messages.js";
-import { trackersForTab, readButtonLabel, autoReadSummary } from "../lib/autoread.js";
+import { trackersForTab, matchesTab, readButtonLabel, autoReadSummary } from "../lib/autoread.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -18,6 +18,7 @@ async function activeTab() {
 }
 
 let reading = new Set();
+let trainTouched = false;
 
 async function render() {
   const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
@@ -25,6 +26,7 @@ async function render() {
   const list = $("#tracker-list");
   list.innerHTML = "";
   $("#empty").style.display = trackers.length ? "none" : "block";
+  if (!trainTouched) $("#train-details").open = trackers.length === 0;
   for (const t of trackers) {
     const li = document.createElement("li");
     li.title = titleFor(t);
@@ -91,7 +93,27 @@ async function render() {
         status(`Could not delete: ${res?.reason || "unknown"}.`, true);
       }
     });
-    actions.append(readBtn, ...(isStale(t) || isUnverified(t) ? [retrainBtn] : []), delBtn);
+    // Balance first: the row shows the value; actions live in a closed menu.
+    // Only an action the row needs right now stays inline, so stale, unverified
+    // and unreadable rows still say what to do.
+    const onTab = matchesTab(t, tabNow?.url);
+    const needsFix = isStale(t) || isUnverified(t);
+    const menu = document.createElement("details");
+    menu.className = "more";
+    const sum = document.createElement("summary");
+    sum.textContent = "More";
+    sum.title = "Refresh, re-track or delete";
+    const menuItems = document.createElement("span");
+    menuItems.className = "more-items";
+    if (onTab) menuItems.append(readBtn);
+    const retrainInline = onTab && needsFix;
+    if (!retrainInline) menuItems.append(retrainBtn);
+    menuItems.append(delBtn);
+    menu.append(sum, menuItems);
+    const inline = [];
+    if (!onTab) inline.push(readBtn);
+    else if (retrainInline) inline.push(retrainBtn);
+    actions.append(...inline, menu);
     li.append(label, value, meta, actions);
     list.appendChild(li);
   }
@@ -147,6 +169,7 @@ async function readTracker(t) {
   }
 }
 
+$("#train-details").addEventListener("toggle", () => { trainTouched = true; });
 $("#train-btn").addEventListener("click", async () => {
   hideUndo();
   const label = $("#label").value.trim();
