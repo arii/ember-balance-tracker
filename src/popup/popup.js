@@ -74,8 +74,15 @@ async function render() {
     delBtn.className = "secondary";
     delBtn.textContent = "Delete";
     delBtn.addEventListener("click", async () => {
-      await chrome.runtime.sendMessage({ type: "ebt:delete-tracker", id: t.id });
+      const res = await chrome.runtime.sendMessage({ type: "ebt:delete-tracker", id: t.id });
       render();
+      if (res?.ok) {
+        lastDeletedTracker = t;
+        status(`Deleted ${t.label}.`);
+        $("#undo-btn").hidden = false;
+      } else {
+        status(`Could not delete: ${res?.reason || "unknown"}.`, true);
+      }
     });
     actions.append(readBtn, ...(isStale(t) || isUnverified(t) ? [retrainBtn] : []), delBtn);
     li.append(label, value, meta, actions);
@@ -83,7 +90,23 @@ async function render() {
   }
 }
 
+let lastDeletedTracker = null;
+function hideUndo() { $("#undo-btn").hidden = true; }
+$("#undo-btn").addEventListener("click", async () => {
+  const t = lastDeletedTracker;
+  if (!t) return;
+  const res = await chrome.runtime.sendMessage({ type: "ebt:restore-tracker", tracker: t });
+  if (res?.ok) {
+    $("#undo-btn").hidden = true;
+    render();
+    status(`Restored ${t.label}.`);
+  } else {
+    $("#undo-btn").hidden = true;
+    status(`Could not restore: ${res?.reason || "unknown"}.`, true);
+  }
+});
 async function readTracker(t) {
+  hideUndo();
   status(`Reading ${t.label}...`);
   const tab = await activeTab();
   if (!tab?.id) return status("No active tab.", true);
@@ -118,6 +141,7 @@ async function readTracker(t) {
 }
 
 $("#train-btn").addEventListener("click", async () => {
+  hideUndo();
   const label = $("#label").value.trim();
   if (!label) return status("Enter a label first.", true);
   const tab = await activeTab();
