@@ -125,7 +125,7 @@ async function render() {
       const totalIn = document.createElement("input");
       totalIn.type = "number"; totalIn.min = "0"; totalIn.step = "any";
       totalIn.className = "total-in";
-      totalIn.placeholder = view.total === null ? "Starting amount" : String(view.total);
+      totalIn.placeholder = view.total === null ? "Start $" : String(view.total);
       totalIn.title = "Starting amount, used only to show percent left. Not read from the page.";
       totalIn.setAttribute("aria-label", `Starting amount for ${t.label}`);
       const totalBtn = document.createElement("button");
