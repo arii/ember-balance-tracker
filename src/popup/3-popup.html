@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ember Balance Tracker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Ember Balance Tracker</h1>
+    </header>
+
+    <section id="trackers">
+      <h2>Tracked balances</h2>
+      <button id="refresh-all" class="secondary" hidden>Refresh all</button>
+      <ul id="refresh-report" class="hint" hidden></ul>
+      <ul id="tracker-list"></ul>
+      <p id="empty" class="hint">Nothing tracked yet.</p>
+    </section>
+
+    <section id="train">
+      <p id="frame-note" class="hint" hidden></p>
+      <details id="train-details">
+        <summary>Track a new balance</summary>
+        <div class="train-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <label for="label" class="step-label">Name it</label>
+            <input id="label" type="text" placeholder="e.g. Runware credits" maxlength="60" />
+          </div>
+        </div>
+        <div class="train-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <p class="step-label">Start training</p>
+            <button id="train-btn" type="button">Start training</button>
+          </div>
+        </div>
+        <div class="train-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <p class="step-label">Click the number on the page</p>
+            <p class="hint step-note">This popup closes first, then click the balance on the page.</p>
+          </div>
+        </div>
+        <details class="how-it-works">
+          <summary>How it works</summary>
+          <p>On a page where you're already signed in: enter a label, click the button, then click the number on the page (same-site embedded frames supported; cross-origin billing frames need separate site access and are not supported yet).</p>
+        </details>
+      </details>
+    </section>
+
+    <footer>
+      <button id="undo-btn" class="secondary" type="button" hidden>Undo delete</button>
+      <span id="status" role="status"></span>
+      <div id="ember-line" class="hint"></div>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
