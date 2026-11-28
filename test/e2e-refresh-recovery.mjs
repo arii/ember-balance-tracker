@@ -29,7 +29,7 @@ const mkPop = async () => { const p = await b.newPage(); await p.setViewport({ w
 present = false; amount = "$44.00"; await page.reload(); await nap(1000);
 let pop = await mkPop(); await pop.goto(`chrome-extension://${id}/src/popup/popup.html`); await nap(2500);
 const meta1 = await pop.$eval(".t-meta", (e) => e.textContent);
-ok(/last good read 1 h ago, latest check failed/.test(meta1), "failed read shows last good time, not fresh: " + meta1);
+ok(/Out of date: last good read 1 h ago\./.test(meta1), "failed read shows last good time, not fresh: " + meta1);
 ok(!!(await pop.$(".t-actions > button")), "Refresh is inline, not buried in More");
 await pop.keyboard.press("Tab"); await pop.keyboard.press("Tab"); await pop.keyboard.press("Tab");
 await pop.click("#refresh-all"); await nap(2500);

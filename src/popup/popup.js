@@ -238,7 +238,7 @@ async function renderEmberLine() {
   const spend = s.calls
     ? ` · ${s.calls} call${s.calls === 1 ? "" : "s"}${s.costUsd == null ? " (cost unknown)" : ` · ≈$${s.costUsd.toFixed(6)}`}`
     : "";
-  line.textContent = settings?.emberEnabled ? `Ember AI: on${spend} · ` : "Ember AI: off (reads are local and free) · ";
+  line.textContent = settings?.emberEnabled ? `Ember AI: on${spend} · ` : "Ember AI: off · ";
   const link = document.createElement("a");
   link.href = "#";
   link.textContent = "Settings";
@@ -328,7 +328,9 @@ $("#refresh-all").addEventListener("click", async () => {
   }
   const lines = summarizeRefreshAll(plan, results);
   const report = $("#refresh-report");
+  // Only what needs attention is listed; refreshed rows show their new value in the list below.
   report.replaceChildren(...lines.map((l, i) => {
+    if (!/not refreshed/.test(l)) return null;
     const li = document.createElement("li"); li.textContent = l;
     if (/not refreshed/.test(l)) li.className = "error";
     if (plan[i].action === "switch") {
@@ -360,10 +362,10 @@ $("#refresh-all").addEventListener("click", async () => {
       li.append(" ", al);
     }
     return li;
-  }));
-  report.hidden = lines.length === 0;
+  }).filter(Boolean));
+  report.hidden = report.children.length === 0;
   const bad = lines.filter((l) => /not refreshed/.test(l)).length;
   await render();
-  status(bad ? `Refreshed ${lines.length - bad} of ${lines.length}. Details are in the list above.` : `Refreshed all ${lines.length}.`, bad > 0);
+  status(bad ? "" : `Refreshed all ${lines.length}.`);
 });
 

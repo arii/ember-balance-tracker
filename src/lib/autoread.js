@@ -88,7 +88,7 @@ export function planRefreshAll(trackers, activeUrl, openTabs, grantedOrigins = [
 }
 
 const REASON_TEXT = {
-  "selector-not-found": "number not found; the page may have changed or you may be signed out",
+  "selector-not-found": "number not found, check you are signed in",
   "anchor-mismatch": "page layout changed, use Re-track",
   "anchor-ambiguous": "more than one matching number, use Re-track",
   empty: "number is empty right now",
@@ -99,13 +99,13 @@ export function summarizeRefreshAll(plan, results) {
   for (const p of plan) {
     if (p.action === "read") {
       const r = results[p.id];
-      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${REASON_TEXT[r?.reason] || "read failed"}). Showing the last good value.`);
+      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${REASON_TEXT[r?.reason] || "read failed"}).`);
     } else if (p.action === "allow") {
-      lines.push(`${p.label}: not refreshed (needs your OK to read ${p.host}). Click Allow to read it now.`);
+      lines.push(`${p.label}: not refreshed (needs your OK to read ${p.host}).`);
     } else if (p.action === "switch") {
-      lines.push(`${p.label}: not refreshed (open in another tab). Switch to it and click the Ember toolbar icon.`);
+      lines.push(`${p.label}: not refreshed (open in another tab).`);
     } else {
-      lines.push(`${p.label}: not refreshed (page not open). Open it, then click the Ember toolbar icon.`);
+      lines.push(`${p.label}: not refreshed (page not open).`);
     }
   }
   return lines;

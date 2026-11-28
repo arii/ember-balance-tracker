@@ -28,7 +28,7 @@ test("an old cached value is not presented as fresh", () => {
 });
 test("a failed latest check says so and keeps the last good time", () => {
   const t = mk({ anchor: "a", lastFailure: { ts: new Date(NOW).toISOString(), reason: "r" } });
-  assert.match(formatMeta(t, NOW), /last good read 1 min ago, latest check failed/);
+  assert.match(formatMeta(t, NOW), /^Out of date: last good read 1 min ago\.$/);
 });
 
 test("refresh all never reports an unreachable balance as refreshed", () => {
@@ -46,7 +46,7 @@ test("refresh all reads another open site only after that exact site is allowed"
   const tabs = [{ id: 1, url: "https://a.test/x" }, { id: 7, url: "https://b.test/y" }];
   const before = planRefreshAll(ts, "https://a.test/x", tabs, []);
   assert.deepEqual(before[1], { id: "b", label: "B", action: "allow", tabId: 7, origin: "https://b.test/*", host: "b.test" });
-  assert.match(summarizeRefreshAll(before, { a: { ok: true } })[1], /needs your OK to read b\.test\)\. Click Allow/);
+  assert.match(summarizeRefreshAll(before, { a: { ok: true } })[1], /needs your OK to read b\.test\)\.$/);
   const after = planRefreshAll(ts, "https://a.test/x", tabs, ["https://b.test/*"]);
   assert.deepEqual(after[1], { id: "b", label: "B", action: "read", tabId: 7 });
   const other = planRefreshAll(ts, "https://a.test/x", tabs, ["https://c.test/*"]);
