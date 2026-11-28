@@ -167,8 +167,16 @@ $("#undo-btn").addEventListener("click", async () => {
     status(`Could not restore: ${res?.reason || "unknown"}.`, true);
   }
 });
+// The Refresh all report describes one run. Any later read makes it obsolete.
+function clearRefreshReport() {
+  const report = $("#refresh-report");
+  report.replaceChildren();
+  report.hidden = true;
+}
+
 async function readTracker(t) {
   hideUndo();
+  clearRefreshReport();
   status(`Reading ${t.label}...`);
   const tab = await activeTab();
   if (!tab?.id) return status("No active tab.", true);
@@ -302,6 +310,7 @@ showNotice().then(autoRead);
 
 $("#refresh-all").addEventListener("click", async () => {
   hideUndo();
+  clearRefreshReport();
   const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
   const tab = await activeTab();
   const open = (await chrome.tabs.query({})).map((x) => x.url).filter(Boolean);
