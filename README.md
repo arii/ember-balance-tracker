@@ -14,7 +14,7 @@ Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hack
    the extension just reads the visible page in your current tab).
 2. Click the extension, enter a label ("Runware credits"), click **Start training**,
    then click the number on the page.
-3. Later, open the popup on that tab (it reads automatically, locally) or click **Refresh**. **Refresh all** reads every balance on the current tab (local only, never the paid fallback) and lists, for each other balance, why it was not refreshed (open in another tab: a Switch to tab button; page not open: open it, then click the icon). Chrome allows page access only on the tab whose icon you click, and the extension asks for no host permissions, so it cannot refresh other tabs' balances for you; it never reports one as refreshed unless a read succeeded. Readings are kept in a local history.
+3. Later, open the popup on that tab (it reads automatically, locally) or click **Refresh**. **Refresh all** reads every balance on the current tab (local only, never the paid fallback). For a balance on another open tab, it shows an **Allow <site>** button. One click asks Chrome for read access to that one site (https only). Once you allow it, Refresh all reads that site's open tab for you from then on, until you remove the access in chrome://extensions. Meta pages (including dev.meta.ai) are never offered this and stay manual: switch to the tab and click the icon. A balance whose page is not open needs the page opened first. It never reports a balance as refreshed unless a read succeeded. Readings are kept in a local history.
    If you're on another tab, it finds your dashboard's open tab and switches to it.
 
 A tracker saves the number's visible label as an anchor. On every read the extension re-finds that label; if the page layout changes and the number moves, it either heals to the right number (label found once) or refuses and shows the last value marked "Out of date: needs attention" (label missing or more than one match). It never silently shows a different number.
@@ -56,9 +56,7 @@ Muse shows its credits inside an embedded billing frame on another origin, which
 
 ## Privacy
 
-- Permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions, no
-  `cookies`. `tabs` is only used to find your dashboard's already-open tab when you
-  click Refresh or Go to tab; page content is still only read after your click via `activeTab`.
+- Permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions are granted at install and no `cookies`. The manifest lists optional https access, which Ember can only ask for one site at a time when you click **Allow <site>** in Refresh all; Chrome shows its own prompt, and you can remove a site in chrome://extensions. Meta pages are never asked. `tabs` is used to find your dashboards' already-open tabs. Without an Allow, page content is only read after your click via `activeTab`.
 - Nothing leaves the browser unless you enable the Ember fallback, and then only the
   page's visible text (capped at 4,000 chars) is sent to Meta's API. Never cookies,
   never credentials.

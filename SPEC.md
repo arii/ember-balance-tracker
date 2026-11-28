@@ -32,7 +32,7 @@ Principles:
 
 Vanilla JS MV3, zero runtime dependencies, no build step.
 
-- `manifest.json` - permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions.
+- `manifest.json` - permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions at install; `optional_host_permissions` is `https://*/*`, requested per exact site only by a user click on Allow in Refresh all (Meta hosts never requested).
 - `src/content/content.js` - training picker (hover highlight, click capture, Esc
   cancel), element reader, visible-text sampler. Injected per user gesture only,
   into all frames: billing numbers often render inside iframes, and a

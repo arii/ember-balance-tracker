@@ -4,7 +4,7 @@ import { BUILD_ID } from "../lib/build.js";
 import { formatValue, formatMeta, titleFor, isStale, isUnverified, rowState } from "../lib/format.js";
 import { displayValue, readingView, foreignSameSiteFrames } from "../lib/display.js";
 import { describeReadFailure } from "../lib/messages.js";
-import { trackersForTab, matchesTab, readButtonLabel, autoReadSummary, planRefreshAll, summarizeRefreshAll } from "../lib/autoread.js";
+import { trackersForTab, matchesTab, readButtonLabel, autoReadSummary, planRefreshAll, summarizeRefreshAll, originPattern } from "../lib/autoread.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -313,14 +313,17 @@ $("#refresh-all").addEventListener("click", async () => {
   clearRefreshReport();
   const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
   const tab = await activeTab();
-  const open = (await chrome.tabs.query({})).map((x) => x.url).filter(Boolean);
-  const plan = planRefreshAll(trackers, tab?.url, open);
+  const openTabs = (await chrome.tabs.query({})).filter((x) => x.url && x.id !== undefined).map((x) => ({ id: x.id, url: x.url }));
+  const origins = [...new Set(openTabs.map((x) => originPattern(x.url)).filter(Boolean))];
+  const granted = [];
+  for (const o of origins) if (await chrome.permissions.contains({ origins: [o] })) granted.push(o);
+  const plan = planRefreshAll(trackers, tab?.url, openTabs, granted);
   status(`Refreshing ${plan.length} balance${plan.length === 1 ? "" : "s"}...`);
   const results = {};
   for (const p of plan) {
     if (p.action !== "read") continue;
     reading.add(p.id);
-    results[p.id] = (await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: p.id, tabId: tab.id, auto: true })) || { ok: false };
+    results[p.id] = (await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: p.id, tabId: p.tabId ?? tab.id, auto: true })) || { ok: false };
     reading.delete(p.id);
   }
   const lines = summarizeRefreshAll(plan, results);
@@ -337,6 +340,25 @@ $("#refresh-all").addEventListener("click", async () => {
       });
       li.append(" ", sw);
     }
+    if (plan[i].action === "allow") {
+      const p = plan[i];
+      const al = document.createElement("button"); al.className = "secondary"; al.textContent = `Allow ${p.host}`;
+      // chrome.permissions.request must run inside this click, one site per click.
+      al.addEventListener("click", async () => {
+        al.disabled = true;
+        let ok = false;
+        try { ok = await chrome.permissions.request({ origins: [p.origin] }); } catch { ok = false; }
+        if (!ok) {
+          li.textContent = `${p.label}: not refreshed (you did not allow ${p.host}).`;
+          return;
+        }
+        const res = (await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: p.id, tabId: p.tabId, auto: true })) || { ok: false };
+        li.textContent = summarizeRefreshAll([{ id: p.id, label: p.label, action: "read" }], { [p.id]: res })[0];
+        li.className = res.ok ? "" : "error";
+        await render();
+      });
+      li.append(" ", al);
+    }
     return li;
   }));
   report.hidden = lines.length === 0;
@@ -344,3 +366,4 @@ $("#refresh-all").addEventListener("click", async () => {
   await render();
   status(bad ? `Refreshed ${lines.length - bad} of ${lines.length}. Details are in the list above.` : `Refreshed all ${lines.length}.`, bad > 0);
 });
+

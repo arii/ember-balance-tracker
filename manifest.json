@@ -5,6 +5,7 @@
   "description": "Track credit and balance amounts on the pages you already use. Click to teach, read on demand. Optional Muse Ember AI fallback.",
   "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "host_permissions": [],
+  "optional_host_permissions": ["https://*/*"],
   "background": { "service_worker": "src/background.js", "type": "module" },
   "action": {
     "default_popup": "src/popup/popup.html",

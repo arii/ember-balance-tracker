@@ -51,15 +51,39 @@ export function badgeFor(trackers, tabUrl, now = Date.now()) {
   return { text: "\u21BB", title: `Ember: ${due.length} balance${due.length === 1 ? "" : "s"} on this tab may be out of date. Click to refresh.` };
 }
 
-// Refresh all: what can really be done for each saved balance with activeTab only.
-// A tracker on the active tab is read now (local only, never the paid fallback). One on
-// another open tab cannot be read until the icon is clicked there. One with no open tab
-// needs the site opened. Nothing is reported as refreshed unless a read succeeded.
-export function planRefreshAll(trackers, activeUrl, openUrls) {
+// Refresh all: what can really be done for each saved balance. A tracker on the active
+// tab is read now (local only, never the paid fallback). One on another open tab is read
+// if the user already allowed Ember on that site, or after one "Allow" click for that
+// exact site (a browser permission prompt; the user can remove it in chrome://extensions).
+// Meta pages are never offered a permission and stay manual. A tracker with no open
+// tab needs the site opened. Nothing is reported as refreshed unless a read succeeded.
+export function hostOf(url) {
+  try { return new URL(url).hostname; } catch { return null; }
+}
+
+// The one origin Ember may ask for, or null when it must not ask (not https).
+export function originPattern(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" ? `${u.origin}/*` : null;
+  } catch { return null; }
+}
+
+export function isMetaHost(host) {
+  return typeof host === "string" && (host === "meta.ai" || host.endsWith(".meta.ai"));
+}
+
+export function planRefreshAll(trackers, activeUrl, openTabs, grantedOrigins = []) {
   return (trackers || []).map((t) => {
-    if (matchesTab(t, activeUrl)) return { id: t.id, label: t.label, action: "read" };
-    if ((openUrls || []).some((u) => matchesTab(t, u))) return { id: t.id, label: t.label, action: "switch" };
-    return { id: t.id, label: t.label, action: "open" };
+    const base = { id: t.id, label: t.label };
+    if (matchesTab(t, activeUrl)) return { ...base, action: "read" };
+    const tab = (openTabs || []).find((x) => matchesTab(t, x.url));
+    if (!tab) return { ...base, action: "open" };
+    const origin = originPattern(tab.url);
+    const host = hostOf(tab.url);
+    if (!origin || isMetaHost(host)) return { ...base, action: "switch" };
+    if (grantedOrigins.includes(origin)) return { ...base, action: "read", tabId: tab.id };
+    return { ...base, action: "allow", tabId: tab.id, origin, host };
   });
 }
 
@@ -76,6 +100,8 @@ export function summarizeRefreshAll(plan, results) {
     if (p.action === "read") {
       const r = results[p.id];
       lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${REASON_TEXT[r?.reason] || "read failed"}). Showing the last good value.`);
+    } else if (p.action === "allow") {
+      lines.push(`${p.label}: not refreshed (needs your OK to read ${p.host}). Click Allow to read it now.`);
     } else if (p.action === "switch") {
       lines.push(`${p.label}: not refreshed (open in another tab). Switch to it and click the Ember toolbar icon.`);
     } else {
