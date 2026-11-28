@@ -1,6 +1,6 @@
 # Ember Balance Tracker
 
-A Chrome MV3 extension that keeps track of credit balances on pages you are already signed in to.
+A Chrome MV3 extension that shows your credit balances in one popup. Click a number once on a page you are signed in to, and from then on opening the popup on that page re-reads it locally, free and instant.
 
 **How Muse Ember is used:** one model call per site, at training time, to write a deterministic extraction pattern for that site's balance text. The pattern is accepted only if it reproduces the exact number you clicked. After that, every read is local: no model call, no cost. The model is optional and off by default; without it, the extension still reads balances with its saved selector and a built-in parser.
 
@@ -14,15 +14,15 @@ Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hack
    the extension just reads the visible page in your current tab).
 2. Click the extension, enter a label ("Runware credits"), click **Start training**,
    then click the number on the page.
-3. Later, open the popup on that tab (it reads automatically, locally) or click **Refresh**. **Refresh all** reads every balance on the current tab (local only, never the paid fallback) and lists, for each other balance, why it was NOT refreshed (open in another tab: switch and click the icon; page not open: open it). Chrome allows page access only on the tab whose icon you click, and the extension asks for no host permissions, so it cannot refresh other tabs' balances for you; it never reports one as refreshed unless a read succeeded. Readings are kept in a local history.
+3. Later, open the popup on that tab (it reads automatically, locally) or click **Refresh**. **Refresh all** reads every balance on the current tab (local only, never the paid fallback) and lists, for each other balance, why it was not refreshed (open in another tab: a Switch to tab button; page not open: open it, then click the icon). Chrome allows page access only on the tab whose icon you click, and the extension asks for no host permissions, so it cannot refresh other tabs' balances for you; it never reports one as refreshed unless a read succeeded. Readings are kept in a local history.
    If you're on another tab, it finds your dashboard's open tab and switches to it.
 
-A tracker saves the number's visible label as an anchor. On every read the extension re-finds that label; if the page layout changes and the number moves, it either heals to the right number (label found once) or refuses and shows the last value marked "Stale: needs attention" (label missing or more than one match). It never silently shows a different number.
+A tracker saves the number's visible label as an anchor. On every read the extension re-finds that label; if the page layout changes and the number moves, it either heals to the right number (label found once) or refuses and shows the last value marked "Out of date: needs attention" (label missing or more than one match). It never silently shows a different number.
 
 If a learned read fails (page changed, session expired), the extension asks you to
 refresh the page or re-teach it.
 
-**Refreshing.** Opening the popup on a tracked tab reads it (local only, no AI). Each row has a visible **Refresh** button (not in the More menu) when you are on its tab. After a failed read the row says "last good read X ago, latest check failed", and a reading older than 5 minutes is labelled "may be out of date". When you switch to or load a tab whose tracked balance is due, the toolbar icon shows a "↻" badge and a tooltip; Chrome gives the extension no page access until you click the icon, so the badge only prompts: nothing is read in the background and there is no timer.
+**Refreshing.** Opening the popup on a tracked tab reads it (local only, no AI). Each row has a visible **Refresh** button (not in the More menu) when you are on its tab. After a failed read the row says "Out of date: last good read X ago, latest check failed", and a reading older than 5 minutes is labelled "may be out of date". When you switch to or load a tab whose tracked balance is due, the toolbar icon shows a "↻" badge and a tooltip; Chrome gives the extension no page access until you click the icon, so the badge only prompts: nothing is read in the background and there is no timer.
 
 ## Trackers from older versions
 

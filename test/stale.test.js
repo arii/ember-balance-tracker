@@ -14,7 +14,7 @@ test("isStale: true when lastFailure.ts later than last history ts", () => {
   };
   assert.equal(isStale(t), true);
   const meta = formatMeta(t);
-  assert.ok(meta.startsWith("Stale:"));
+  assert.ok(meta.startsWith("Out of date:"));
   assert.ok(meta.includes("needs attention"));
   const title = titleFor(t);
   assert.ok(title.includes("Last read failed: anchor-mismatch"));

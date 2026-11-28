@@ -58,6 +58,7 @@ async function render() {
     const retrainBtn = document.createElement("button");
     retrainBtn.className = "secondary";
     retrainBtn.textContent = "Re-track";
+    retrainBtn.title = "Pick the number on the page again (use this after the page layout changed)";
     retrainBtn.addEventListener("click", async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.url?.startsWith(t.urlPattern)) {
@@ -285,10 +286,11 @@ async function autoRead() {
   }
   reading = new Set();
   await render();
-  const failed = results.find((r) => !r.ok);
+  const failedIdx = results.findIndex((r) => !r.ok);
+  const failed = failedIdx >= 0 ? results[failedIdx] : null;
   if (failed) {
     const hint = failed.reason === "unparseable" ? " Automatic reads are local only; press Refresh to let Ember AI try if you turned it on." : "";
-    status(`${autoReadSummary(results)} ${describeReadFailure(failed.reason, "A balance")}${hint}`, true);
+    status(`${autoReadSummary(results)} ${describeReadFailure(failed.reason, mine[failedIdx].label)}${hint}`, true);
   }
   else status(autoReadSummary(results));
 }
@@ -314,9 +316,22 @@ $("#refresh-all").addEventListener("click", async () => {
   }
   const lines = summarizeRefreshAll(plan, results);
   const report = $("#refresh-report");
-  report.replaceChildren(...lines.map((l) => { const li = document.createElement("li"); li.textContent = l; if (/NOT refreshed/.test(l)) li.className = "error"; return li; }));
+  report.replaceChildren(...lines.map((l, i) => {
+    const li = document.createElement("li"); li.textContent = l;
+    if (/not refreshed/.test(l)) li.className = "error";
+    if (plan[i].action === "switch") {
+      const sw = document.createElement("button"); sw.className = "secondary"; sw.textContent = "Switch to tab";
+      sw.addEventListener("click", async () => {
+        const t = trackers.find((x) => x.id === plan[i].id);
+        const found = (await chrome.tabs.query({})).find((x) => x.url?.startsWith(t.urlPattern));
+        if (found?.id) { await chrome.tabs.update(found.id, { active: true }); if (found.windowId !== undefined) await chrome.windows.update(found.windowId, { focused: true }).catch(() => {}); }
+      });
+      li.append(" ", sw);
+    }
+    return li;
+  }));
   report.hidden = lines.length === 0;
-  const bad = lines.filter((l) => /NOT refreshed/.test(l)).length;
+  const bad = lines.filter((l) => /not refreshed/.test(l)).length;
   await render();
   status(bad ? `Refreshed ${lines.length - bad} of ${lines.length}. ${bad} could not be refreshed from here (see below).` : `Refreshed all ${lines.length}.`, bad > 0);
 });

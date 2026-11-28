@@ -68,11 +68,11 @@ export function summarizeRefreshAll(plan, results) {
   for (const p of plan) {
     if (p.action === "read") {
       const r = results[p.id];
-      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: NOT refreshed (${r?.reason || "read failed"}); showing the last good value.`);
+      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${r?.reason || "read failed"}). Showing the last good value.`);
     } else if (p.action === "switch") {
-      lines.push(`${p.label}: NOT refreshed. It is open in another tab: switch there and click the Ember icon.`);
+      lines.push(`${p.label}: not refreshed (open in another tab). Switch to it and click the Ember icon.`);
     } else {
-      lines.push(`${p.label}: NOT refreshed. Its page is not open: open it, then click the Ember icon.`);
+      lines.push(`${p.label}: not refreshed (page not open). Open it, then click the Ember icon.`);
     }
   }
   return lines;

@@ -100,7 +100,7 @@ export function rowState(t) {
 export function formatMeta(t, now = Date.now()) {
   const last = t.history?.[t.history.length - 1];
   if (!last) return 'never read';
-  if (isStale(t)) return `Stale: last good read ${relativeTime(last.ts, now)}, latest check failed - needs attention`;
+  if (isStale(t)) return `Out of date: last good read ${relativeTime(last.ts, now)}, latest check failed - needs attention`;
   let result = relativeTime(last.ts, now);
   if (now - new Date(last.ts).getTime() > 5 * 60_000) result += ' - may be out of date';
   if (isUnverified(t)) result += ' - unverified';
