@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dueForTab, badgeFor, DUE_AFTER_MS } from "../src/lib/autoread.js";
+import { planRefreshAll, summarizeRefreshAll } from "../src/lib/autoread.js";
 import { formatMeta } from "../src/lib/format.js";
 
 const NOW = Date.parse("2026-11-28T12:00:00Z");
@@ -28,4 +29,14 @@ test("an old cached value is not presented as fresh", () => {
 test("a failed latest check says so and keeps the last good time", () => {
   const t = mk({ anchor: "a", lastFailure: { ts: new Date(NOW).toISOString(), reason: "r" } });
   assert.match(formatMeta(t, NOW), /last good read 1 min ago, latest check failed/);
+});
+
+test("refresh all never reports an unreachable balance as refreshed", () => {
+  const ts = [{ id: "a", label: "A", urlPattern: "https://a.test/" }, { id: "b", label: "B", urlPattern: "https://b.test/" }, { id: "c", label: "C", urlPattern: "https://c.test/" }, { id: "d", label: "D", urlPattern: "https://d.test/" }];
+  const plan = planRefreshAll(ts, "https://a.test/x", ["https://a.test/x", "https://b.test/y"]);
+  assert.deepEqual(plan.map((p) => p.action), ["read", "switch", "open", "open"]);
+  const lines = summarizeRefreshAll(plan, { a: { ok: true } });
+  assert.equal(lines[0], "A: refreshed.");
+  assert.ok(lines.slice(1).every((l) => /NOT refreshed/.test(l)));
+  assert.match(summarizeRefreshAll(plan, { a: { ok: false, reason: "anchor-mismatch" } })[0], /NOT refreshed \(anchor-mismatch\)/);
 });

@@ -50,3 +50,30 @@ export function badgeFor(trackers, tabUrl, now = Date.now()) {
   if (!due.length) return { text: "", title: "Ember Balance Tracker" };
   return { text: "\u21BB", title: `Ember: ${due.length} balance${due.length === 1 ? "" : "s"} on this tab may be out of date. Click to refresh.` };
 }
+
+// Refresh all: what can really be done for each saved balance with activeTab only.
+// A tracker on the active tab is read now (local only, never the paid fallback). One on
+// another open tab cannot be read until the icon is clicked there. One with no open tab
+// needs the site opened. Nothing is reported as refreshed unless a read succeeded.
+export function planRefreshAll(trackers, activeUrl, openUrls) {
+  return (trackers || []).map((t) => {
+    if (matchesTab(t, activeUrl)) return { id: t.id, label: t.label, action: "read" };
+    if ((openUrls || []).some((u) => matchesTab(t, u))) return { id: t.id, label: t.label, action: "switch" };
+    return { id: t.id, label: t.label, action: "open" };
+  });
+}
+
+export function summarizeRefreshAll(plan, results) {
+  const lines = [];
+  for (const p of plan) {
+    if (p.action === "read") {
+      const r = results[p.id];
+      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: NOT refreshed (${r?.reason || "read failed"}); showing the last good value.`);
+    } else if (p.action === "switch") {
+      lines.push(`${p.label}: NOT refreshed. It is open in another tab: switch there and click the Ember icon.`);
+    } else {
+      lines.push(`${p.label}: NOT refreshed. Its page is not open: open it, then click the Ember icon.`);
+    }
+  }
+  return lines;
+}

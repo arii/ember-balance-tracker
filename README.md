@@ -1,7 +1,10 @@
 # Ember Balance Tracker
 
-A Chrome MV3 extension that tracks credit and balance amounts on pages you already use.
-You teach it once ("track this balance"), it reads the value on demand afterwards.
+A Chrome MV3 extension that keeps track of credit balances on pages you are already signed in to.
+
+**How Muse Ember is used:** one model call per site, at training time, to write a deterministic extraction pattern for that site's balance text. The pattern is accepted only if it reproduces the exact number you clicked. After that, every read is local: no model call, no cost. The model is optional and off by default; without it, the extension still reads balances with its saved selector and a built-in parser.
+
+It works on pages whose balance is readable text in the page you click on. It does not work everywhere: balances inside cross-origin frames (for example Muse's billing page) need that frame opened as its own tab first.
 
 Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hackathon) (Nov 23 - Dec 2, 2026).
 
@@ -11,7 +14,7 @@ Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hack
    the extension just reads the visible page in your current tab).
 2. Click the extension, enter a label ("Runware credits"), click **Start training**,
    then click the number on the page.
-3. Later, click **Read now** to re-read the value. Readings are kept in a local history.
+3. Later, open the popup on that tab (it reads automatically, locally) or click **Refresh**. **Refresh all** reads every balance on the current tab (local only, never the paid fallback) and lists, for each other balance, why it was NOT refreshed (open in another tab: switch and click the icon; page not open: open it). Chrome allows page access only on the tab whose icon you click, and the extension asks for no host permissions, so it cannot refresh other tabs' balances for you; it never reports one as refreshed unless a read succeeded. Readings are kept in a local history.
    If you're on another tab, it finds your dashboard's open tab and switches to it.
 
 A tracker saves the number's visible label as an anchor. On every read the extension re-finds that label; if the page layout changes and the number moves, it either heals to the right number (label found once) or refuses and shows the last value marked "Stale: needs attention" (label missing or more than one match). It never silently shows a different number.
@@ -45,13 +48,17 @@ API key. Every call is recorded with token usage and estimated cost in a local
 
 ## What is verified and what is not
 
-426 unit tests pass (npm test, build 2026-11-26-d). Real-Chrome e2e with the real toolbar passes on a replica of a billing page (swapped tiles heal, an inserted second Balance card is refused as stale). NOT verified: live provider sites (the cloud browser cannot load the extension), so a real Chrome session is the live check; two numbers with the same label cause a refusal by design.
+495 unit tests pass (npm test, build 2026-11-28-c). Real-Chrome e2e with the real toolbar passes on a replica of a billing page (swapped tiles heal, an inserted second Balance card is refused as stale). NOT verified: live provider sites (the cloud browser cannot load the extension), so a real Chrome session is the live check; two numbers with the same label cause a refusal by design.
+
+## Muse and other cross-origin frames
+
+Muse shows its credits inside an embedded billing frame on another origin, which the extension cannot read from the parent page without host access. The popup detects this and offers to open the frame's address as its own tab, where you track the balance as usual. The page shows a "Free credits in use" amount, not a total, so **% left** needs you to enter the starting amount (**Set total**); the extension never derives a total from the displayed balance. **Show amount** switches back to the raw value. Verified in real Chrome on a replica built from the captured page; the final click on the live signed-in site is a manual check (see HARDWARE-TESTING.md).
 
 ## Privacy
 
 - Permissions: `activeTab`, `storage`, `scripting`, `tabs`. No host permissions, no
   `cookies`. `tabs` is only used to find your dashboard's already-open tab when you
-  click Read now; page content is still only read after your click via `activeTab`.
+  click Refresh or Go to tab; page content is still only read after your click via `activeTab`.
 - Nothing leaves the browser unless you enable the Ember fallback, and then only the
   page's visible text (capped at 4,000 chars) is sent to Meta's API. Never cookies,
   never credentials.

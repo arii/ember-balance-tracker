@@ -4,7 +4,7 @@ import { BUILD_ID } from "../lib/build.js";
 import { formatValue, formatMeta, titleFor, isStale, isUnverified, rowState } from "../lib/format.js";
 import { displayValue, readingView, foreignSameSiteFrames } from "../lib/display.js";
 import { describeReadFailure } from "../lib/messages.js";
-import { trackersForTab, matchesTab, readButtonLabel, autoReadSummary } from "../lib/autoread.js";
+import { trackersForTab, matchesTab, readButtonLabel, autoReadSummary, planRefreshAll, summarizeRefreshAll } from "../lib/autoread.js";
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, isError = false) => {
@@ -27,6 +27,7 @@ async function render() {
   const list = $("#tracker-list");
   list.innerHTML = "";
   $("#empty").style.display = trackers.length ? "none" : "block";
+  $("#refresh-all").hidden = trackers.length === 0;
   if (!trainTouched) $("#train-details").open = trackers.length === 0;
   for (const t of trackers) {
     const li = document.createElement("li");
@@ -296,3 +297,26 @@ render();
 renderEmberLine();
 showFrameNote();
 showNotice().then(autoRead);
+
+$("#refresh-all").addEventListener("click", async () => {
+  hideUndo();
+  const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
+  const tab = await activeTab();
+  const open = (await chrome.tabs.query({})).map((x) => x.url).filter(Boolean);
+  const plan = planRefreshAll(trackers, tab?.url, open);
+  status(`Refreshing ${plan.length} balance${plan.length === 1 ? "" : "s"}...`);
+  const results = {};
+  for (const p of plan) {
+    if (p.action !== "read") continue;
+    reading.add(p.id);
+    results[p.id] = (await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: p.id, tabId: tab.id, auto: true })) || { ok: false };
+    reading.delete(p.id);
+  }
+  const lines = summarizeRefreshAll(plan, results);
+  const report = $("#refresh-report");
+  report.replaceChildren(...lines.map((l) => { const li = document.createElement("li"); li.textContent = l; if (/NOT refreshed/.test(l)) li.className = "error"; return li; }));
+  report.hidden = lines.length === 0;
+  const bad = lines.filter((l) => /NOT refreshed/.test(l)).length;
+  await render();
+  status(bad ? `Refreshed ${lines.length - bad} of ${lines.length}. ${bad} could not be refreshed from here (see below).` : `Refreshed all ${lines.length}.`, bad > 0);
+});

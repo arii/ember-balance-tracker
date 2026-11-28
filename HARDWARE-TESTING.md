@@ -17,7 +17,7 @@ fallback is OFF by default and needs your API key.
 1. chrome://extensions -> Developer mode -> Load unpacked -> pick the repo folder
 2. npm run demo    # serves a mock billing page
 3. Open the demo page, click the toolbar icon (puzzle menu, then Ember Balance Tracker; this click grants access to the tab), type a label, click "Start training", then click the $ amount on the page. Checked with real toolbar clicks on the demo page only, not a real billing site or live Ember.
-4. Days-later flow: click "Read now" - instant, no API call
+4. Days-later flow: open the popup or click Refresh - instant, no API call
 5. Try demo/redesigned.html (honest "can't find it - refresh or re-teach") and
    demo/ambiguous.html (only your labeled element is read)
 
@@ -41,3 +41,4 @@ fallback is OFF by default and needs your API key.
 1. Track a balance, wait over 5 minutes (or age the reading), then switch to that tab: the toolbar icon shows a badge and its tooltip says the balance may be out of date.
 2. Open the popup: Refresh is a visible button on the row, not inside More. Click it: the value updates, the meta line says "just now" and the badge clears.
 3. Make the read fail (remove the element): the row shows "last good read X ago, latest check failed", with the old value dimmed. It must never look fresh.
+4. Track balances on two sites, open both, and click Refresh all on one: only that site's balance says refreshed; the other says NOT refreshed with the reason, and an unopened site says its page is not open.
