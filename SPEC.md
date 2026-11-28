@@ -18,7 +18,7 @@ Principles:
 
 ## 2. User stories
 
-1. On a billing page, I click "Track this balance", give it a label and click the
+1. On a billing page, I click "Start training", give it a label and click the
    balance element. No API keys or scraping config.
 2. Later I click "Read now" and see the current value, stored in history.
 3. If the site changed, I see "can't find it - refresh or teach again", not a wrong

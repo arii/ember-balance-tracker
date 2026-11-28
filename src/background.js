@@ -3,6 +3,7 @@
 import { parseBalance } from "./lib/parse.js";
 import { BUILD_ID } from "./lib/build.js";
 import { restoreTracker } from "./lib/restore.js";
+import { localOnlySettings } from "./lib/autoread.js";
 import { learnPattern, readWithFallback } from "./lib/fallback.js";
 import { budgetAllows, worstCaseCost, TRACE_MODEL, MAX_TIER_BODY_BYTES } from "./lib/trace.js";
 
@@ -309,7 +310,7 @@ export function joinFrameTexts(results, maxChars = 4000) {
   return out.slice(0, maxChars);
 }
 
-async function readTracker(trackerId, tabId) {
+async function readTracker(trackerId, tabId, auto = false) {
   const trackers = await getStore(TRACKERS_KEY, []);
   const t = trackers.find((x) => x.id === trackerId);
   if (!t) return { ok: false, reason: "unknown-tracker" };
@@ -330,7 +331,8 @@ async function readTracker(trackerId, tabId) {
   if (res?.ok) {
     // Deterministic read first, Ember fallback last - the shared, tested
     // orchestration in lib/fallback.js owns precedence and the consent gate.
-    const settings = await getStore(SETTINGS_KEY, {});
+    const stored = await getStore(SETTINGS_KEY, {});
+    const settings = auto ? localOnlySettings(stored) : stored;
     let pageText;
     const result = await readWithFallback({
       text: res.text,
@@ -477,7 +479,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
       case "ebt:read-tracker":
-        sendResponse(await readTracker(msg.id, msg.tabId));
+        sendResponse(await readTracker(msg.id, msg.tabId, msg.auto === true));
         break;
       case "ebt:derive-pattern":
         sendResponse(await derivePattern(msg.id, msg.trainingText));

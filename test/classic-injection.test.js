@@ -1,5 +1,5 @@
 // Regression: chrome.scripting.executeScript injects content.js as a CLASSIC
-// script (the installed-extension path - popup > Track this balance >
+// script (the installed-extension path - popup > Start training >
 // background injection). A module-only feature such as import.meta is a
 // parse-time SyntaxError there and silently kills the whole picker flow on
 // real Chrome (found 2026-11-25: installed-extension training never armed).

@@ -9,7 +9,7 @@ Built for the [Muse Ember Hackathon](https://cerebralvalley.ai/e/muse-ember-hack
 
 1. Open a page where you're already signed in (no separate login, no cookies touched -
    the extension just reads the visible page in your current tab).
-2. Click the extension, enter a label ("Runware credits"), click **Track this balance**,
+2. Click the extension, enter a label ("Runware credits"), click **Start training**,
    then click the number on the page.
 3. Later, click **Read now** to re-read the value. Readings are kept in a local history.
    If you're on another tab, it finds your dashboard's open tab and switches to it.
@@ -21,7 +21,7 @@ refresh the page or re-teach it.
 
 ## Trackers from older versions
 
-Trackers created before anchors keep their history but show "unverified". Each such row has a Re-track button - click it on that tracker's own site, then click the number once. It keeps the tracker id, label and history, installs the anchor, and is rejected if the page origin differs. "Track this balance" still creates a separate new tracker; nothing is merged by label.
+Trackers created before anchors keep their history but show "unverified". Each such row has a Re-track button - click it on that tracker's own site, then click the number once. It keeps the tracker id, label and history, installs the anchor, and is rejected if the page origin differs. "Start training" still creates a separate new tracker; nothing is merged by label.
 
 ## The Muse Ember role (hybrid by design)
 
