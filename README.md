@@ -19,6 +19,8 @@ A tracker saves the number's visible label as an anchor. On every read the exten
 If a learned read fails (page changed, session expired), the extension asks you to
 refresh the page or re-teach it.
 
+**Refreshing.** Opening the popup on a tracked tab reads it (local only, no AI). Each row has a visible **Refresh** button (not in the More menu) when you are on its tab. After a failed read the row says "last good read X ago, latest check failed", and a reading older than 5 minutes is labelled "may be out of date". When you switch to or load a tab whose tracked balance is due, the toolbar icon shows a "↻" badge and a tooltip; Chrome gives the extension no page access until you click the icon, so the badge only prompts: nothing is read in the background and there is no timer.
+
 ## Trackers from older versions
 
 Trackers created before anchors keep their history but show "unverified". Each such row has a Re-track button - click it on that tracker's own site, then click the number once. It keeps the tracker id, label and history, installs the anchor, and is rejected if the page origin differs. "Start training" still creates a separate new tracker; nothing is merged by label.

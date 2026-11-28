@@ -11,6 +11,7 @@ Principles:
 - Uses the existing browser session. No separate login, no credential handling, no
   cookie access or export.
 - A stale page or session is a visible prompt to refresh, never a silent wrong value.
+- A reading older than 5 minutes, or a failed latest check, is labelled as such beside the value. The toolbar icon shows a badge when a tab's balance is due; reads still need a click (activeTab), with no polling and no new permission.
 - Click-to-teach: open the page, click the extension, click the balance.
 - AI is a fallback and accelerator, not the hot path. At training time the Muse Ember
   model can derive a deterministic extraction pattern; later reads reuse that pattern

@@ -29,3 +29,24 @@ export function autoReadSummary(results) {
 export function localOnlySettings(settings) {
   return { ...(settings || {}), emberEnabled: false };
 }
+
+// A tab's tracked balances are "due" when they have never been read, the last read
+// failed, or the last good reading is older than this. Used only to label the
+// toolbar icon: the extension cannot read a page without a click (activeTab), and
+// no polling or host permission is added.
+export const DUE_AFTER_MS = 5 * 60_000;
+
+export function dueForTab(trackers, tabUrl, now = Date.now()) {
+  return trackersForTab(trackers, tabUrl).filter((t) => {
+    const last = t.history?.[t.history.length - 1];
+    if (!last) return true;
+    if (t.lastFailure && t.lastFailure.ts > last.ts) return true;
+    return now - new Date(last.ts).getTime() > DUE_AFTER_MS;
+  });
+}
+
+export function badgeFor(trackers, tabUrl, now = Date.now()) {
+  const due = dueForTab(trackers, tabUrl, now);
+  if (!due.length) return { text: "", title: "Ember Balance Tracker" };
+  return { text: "\u21BB", title: `Ember: ${due.length} balance${due.length === 1 ? "" : "s"} on this tab may be out of date. Click to refresh.` };
+}

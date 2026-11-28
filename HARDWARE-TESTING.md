@@ -36,3 +36,8 @@ fallback is OFF by default and needs your API key.
 - Repo has no LICENSE for your own code yet - your call (MIT is common for hackathons).
 - Submission needs the public repo (done) + the prompt/token trace (format ready,
   needs real runs).
+
+## Refresh visibility (build 2026-11-28-c)
+1. Track a balance, wait over 5 minutes (or age the reading), then switch to that tab: the toolbar icon shows a badge and its tooltip says the balance may be out of date.
+2. Open the popup: Refresh is a visible button on the row, not inside More. Click it: the value updates, the meta line says "just now" and the badge clears.
+3. Make the read fail (remove the element): the row shows "last good read X ago, latest check failed", with the old value dimmed. It must never look fresh.

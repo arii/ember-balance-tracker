@@ -4,7 +4,7 @@ import { parseBalance } from "./lib/parse.js";
 import { validateDisplay } from "./lib/display.js";
 import { BUILD_ID } from "./lib/build.js";
 import { restoreTracker } from "./lib/restore.js";
-import { localOnlySettings } from "./lib/autoread.js";
+import { localOnlySettings, badgeFor } from "./lib/autoread.js";
 import { learnPattern, readWithFallback } from "./lib/fallback.js";
 import { budgetAllows, worstCaseCost, TRACE_MODEL, MAX_TIER_BODY_BYTES } from "./lib/trace.js";
 
@@ -160,7 +160,13 @@ async function recordReading(trackerId, reading) {
     if (t.history.length > 500) t.history = t.history.slice(-500);
     delete t.lastFailure;
     return t;
-  });
+  }).then(async (r) => { await refreshBadges(); return r; });
+}
+
+async function refreshBadges() {
+  if (!chrome.tabs?.query) return;
+  const tabs = await chrome.tabs.query({}).catch(() => []);
+  for (const tb of tabs) if (tb.id !== undefined) await updateBadge(tb.id, tb.url);
 }
 
 async function recordFailure(trackerId, reason) {
@@ -366,6 +372,23 @@ async function readTracker(trackerId, tabId, auto = false) {
 }
 
 
+
+// Label the toolbar icon when the tab's tracked balances are due. Label only: no read
+// happens without a click, and there is no timer.
+export async function updateBadge(tabId, url) {
+  if (!chrome.action?.setBadgeText || typeof url !== "string") return;
+  const { text, title } = badgeFor(await getStore(TRACKERS_KEY, []), url);
+  await chrome.action.setBadgeText({ tabId, text }).catch(() => {});
+  if (text) await chrome.action.setBadgeBackgroundColor?.({ tabId, color: "#b45309" }).catch(() => {});
+  await chrome.action.setTitle?.({ tabId, title }).catch(() => {});
+}
+chrome.tabs?.onActivated?.addListener(async ({ tabId }) => {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (tab) await updateBadge(tabId, tab.url);
+});
+chrome.tabs?.onUpdated?.addListener((tabId, info, tab) => {
+  if (info.status === "complete") updateBadge(tabId, tab.url);
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {

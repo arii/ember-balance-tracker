@@ -106,7 +106,6 @@ async function render() {
     sum.title = "Refresh, re-track or delete";
     const menuItems = document.createElement("span");
     menuItems.className = "more-items";
-    if (onTab) menuItems.append(readBtn);
     const retrainInline = onTab && needsFix;
     if (!retrainInline) menuItems.append(retrainBtn);
     const view = readingView(t);
@@ -144,7 +143,7 @@ async function render() {
     menu.append(sum, menuItems);
     const inline = [];
     if (!onTab) inline.push(readBtn);
-    else if (retrainInline) inline.push(retrainBtn);
+    else { inline.push(readBtn); if (retrainInline) inline.push(retrainBtn); }
     actions.append(...inline, menu);
     li.append(label, value, meta, actions);
     list.appendChild(li);
