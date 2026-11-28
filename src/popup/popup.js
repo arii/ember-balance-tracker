@@ -195,8 +195,7 @@ async function readTracker(t) {
   }
   const res = await chrome.runtime.sendMessage({ type: "ebt:read-tracker", id: t.id, tabId: tab.id });
   if (res?.ok) {
-    const p = res.parsed;
-    status(`${t.label}: ${formatValue(p)} (via ${res.source})`);
+    status(""); // the row already shows the new value and "just now"
     render();
   } else if (res?.reason === "anchor-mismatch" || res?.reason === "anchor-ambiguous") {
     status(describeReadFailure(res.reason, t.label), true);
@@ -300,7 +299,7 @@ async function autoRead() {
     const hint = failed.reason === "unparseable" ? " Automatic reads are local only; press Refresh to let Ember AI try if you turned it on." : "";
     status(`${autoReadSummary(results)} ${describeReadFailure(failed.reason, mine[failedIdx].label)}${hint}`, true);
   }
-  else status(autoReadSummary(results));
+  else status(""); // success is visible in the rows
 }
 
 render();
