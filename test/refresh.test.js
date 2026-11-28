@@ -38,5 +38,5 @@ test("refresh all never reports an unreachable balance as refreshed", () => {
   const lines = summarizeRefreshAll(plan, { a: { ok: true } });
   assert.equal(lines[0], "A: refreshed.");
   assert.ok(lines.slice(1).every((l) => /not refreshed/.test(l)));
-  assert.match(summarizeRefreshAll(plan, { a: { ok: false, reason: "anchor-mismatch" } })[0], /not refreshed \(anchor-mismatch\)/);
+  assert.match(summarizeRefreshAll(plan, { a: { ok: false, reason: "anchor-mismatch" } })[0], /not refreshed \(page layout changed, use Re-track\)/);
 });

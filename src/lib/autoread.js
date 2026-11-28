@@ -63,12 +63,19 @@ export function planRefreshAll(trackers, activeUrl, openUrls) {
   });
 }
 
+const REASON_TEXT = {
+  "selector-not-found": "number not found on this page",
+  "anchor-mismatch": "page layout changed, use Re-track",
+  "anchor-ambiguous": "more than one matching number, use Re-track",
+  empty: "number is empty right now",
+};
+
 export function summarizeRefreshAll(plan, results) {
   const lines = [];
   for (const p of plan) {
     if (p.action === "read") {
       const r = results[p.id];
-      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${r?.reason || "read failed"}). Showing the last good value.`);
+      lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${REASON_TEXT[r?.reason] || "read failed"}). Showing the last good value.`);
     } else if (p.action === "switch") {
       lines.push(`${p.label}: not refreshed (open in another tab). Switch to it and click the Ember toolbar icon.`);
     } else {
