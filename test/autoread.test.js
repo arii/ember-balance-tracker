@@ -21,7 +21,7 @@ test("autoReadSummary reports successes and failures", () => {
   assert.equal(autoReadSummary([]), "");
   assert.equal(autoReadSummary([{ ok: true }]), "Read 1 balance on this page.");
   assert.equal(autoReadSummary([{ ok: true }, { ok: true }]), "Read 2 balances on this page.");
-  assert.equal(autoReadSummary([{ ok: true }, { ok: false }]), "Read 1 of 2 on this page; 1 need attention.");
+  assert.equal(autoReadSummary([{ ok: true }, { ok: false }]), "Read 1 of 2 on this page; 1 could not be read.");
 });
 
 import { localOnlySettings } from "../src/lib/autoread.js";

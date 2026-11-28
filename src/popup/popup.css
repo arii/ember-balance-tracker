@@ -74,3 +74,4 @@ footer { padding: 8px 14px 12px; }
 #refresh-report { margin: 6px 0; padding-left: 16px; font-size: 12px; }
 #refresh-report .error { color: #b91c1c; }
 @media (prefers-color-scheme: dark) { #refresh-report .error { color: #f87171; } }
+button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }

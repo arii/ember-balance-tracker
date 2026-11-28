@@ -2,7 +2,7 @@
 
 A Chrome MV3 extension that shows your credit balances in one popup. Click a number once on a page you are signed in to, and from then on opening the popup on that page re-reads it locally, free and instant.
 
-**How Muse Ember is used:** one model call per site, at training time, to write a deterministic extraction pattern for that site's balance text. The pattern is accepted only if it reproduces the exact number you clicked. After that, every read is local: no model call, no cost. The model is optional and off by default; without it, the extension still reads balances with its saved selector and a built-in parser.
+**How Muse Ember is used:** one model call per site, at training time, to write a deterministic extraction pattern for that site's balance text. The pattern is accepted only if it reproduces the exact number you clicked. After that, every read is local: no model call, no cost. The model is optional and off by default; without it, the extension still re-reads the spot you clicked using a built-in number parser.
 
 It works on pages whose balance is readable text in the page you click on. It does not work everywhere: balances inside cross-origin frames (for example Muse's billing page) need that frame opened as its own tab first.
 

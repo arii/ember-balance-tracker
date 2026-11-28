@@ -19,7 +19,7 @@ export function autoReadSummary(results) {
   const failed = results.length - ok;
   if (!results.length) return "";
   if (!failed) return `Read ${ok} balance${ok === 1 ? "" : "s"} on this page.`;
-  return `Read ${ok} of ${results.length} on this page; ${failed} need attention.`;
+  return `Read ${ok} of ${results.length} on this page; ${failed} could not be read.`;
 }
 
 // Reading on popup open must never spend. Prior consent covers a read the user asked
@@ -70,9 +70,9 @@ export function summarizeRefreshAll(plan, results) {
       const r = results[p.id];
       lines.push(r?.ok ? `${p.label}: refreshed.` : `${p.label}: not refreshed (${r?.reason || "read failed"}). Showing the last good value.`);
     } else if (p.action === "switch") {
-      lines.push(`${p.label}: not refreshed (open in another tab). Switch to it and click the Ember icon.`);
+      lines.push(`${p.label}: not refreshed (open in another tab). Switch to it and click the Ember toolbar icon.`);
     } else {
-      lines.push(`${p.label}: not refreshed (page not open). Open it, then click the Ember icon.`);
+      lines.push(`${p.label}: not refreshed (page not open). Open it, then click the Ember toolbar icon.`);
     }
   }
   return lines;
