@@ -64,7 +64,7 @@ export function planRefreshAll(trackers, activeUrl, openUrls) {
 }
 
 const REASON_TEXT = {
-  "selector-not-found": "number not found on this page",
+  "selector-not-found": "number not found; the page may have changed or you may be signed out",
   "anchor-mismatch": "page layout changed, use Re-track",
   "anchor-ambiguous": "more than one matching number, use Re-track",
   empty: "number is empty right now",

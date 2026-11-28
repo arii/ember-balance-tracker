@@ -333,5 +333,5 @@ $("#refresh-all").addEventListener("click", async () => {
   report.hidden = lines.length === 0;
   const bad = lines.filter((l) => /not refreshed/.test(l)).length;
   await render();
-  status(bad ? `Refreshed ${lines.length - bad} of ${lines.length}.` : `Refreshed all ${lines.length}.`, bad > 0);
+  status(bad ? `Refreshed ${lines.length - bad} of ${lines.length}. Details are in the list above.` : `Refreshed all ${lines.length}.`, bad > 0);
 });
