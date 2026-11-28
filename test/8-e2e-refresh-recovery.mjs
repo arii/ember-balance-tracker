@@ -1,0 +1,44 @@
+// Real-Chrome check (not part of npm test): failed Refresh all report must clear after a later successful row refresh. Run: node test/e2e-refresh-recovery.mjs
+import puppeteer from "puppeteer"; import http from "node:http"; import fs from "node:fs"; import os from "node:os"; import path from "node:path";
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ebt-r-"));
+fs.cpSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), ".."), tmp, { recursive: true, filter: (s) => !s.includes("node_modules") && !s.includes(".git") && !s.includes("/test") });
+const mf = JSON.parse(fs.readFileSync(tmp + "/manifest.json")); mf.host_permissions = ["<all_urls>"]; fs.writeFileSync(tmp + "/manifest.json", JSON.stringify(mf));
+let amount = "$50.00", present = true;
+const srv = http.createServer((q, r) => { r.setHeader("content-type", "text/html"); r.end(`<body><h3>Credits left</h3>${present ? `<div id=v style="font-size:28px">${amount}</div>` : ""}</body>`); }).listen(8941);
+const b = await puppeteer.launch({ headless: "new", args: [`--disable-extensions-except=${tmp}`, `--load-extension=${tmp}`, "--no-sandbox"] });
+const sw = await b.waitForTarget((x) => x.type() === "service_worker"); const id = new URL(sw.url()).host;
+const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) process.exitCode = 1; };
+const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+const page = await b.newPage(); await page.goto("http://localhost:8941/", { waitUntil: "load" });
+const ext = await b.newPage(); await ext.goto(`chrome-extension://${id}/src/popup/popup.html`);
+const tabId = await ext.evaluate(async () => (await chrome.tabs.query({ url: "http://localhost:8941/*" }))[0].id);
+await ext.evaluate(async () => { await chrome.storage.local.set({ settings: { emberEnabled: false } }); });
+await page.bringToFront();
+await ext.evaluate((tabId) => chrome.runtime.sendMessage({ type: "ebt:arm-training", tabId, label: "Credits" }), tabId); await nap(800);
+const bx = await page.evaluate(() => { const r = document.getElementById("v").getBoundingClientRect(); return { x: r.x + 20, y: r.y + 10 }; });
+await page.mouse.move(bx.x, bx.y); await page.mouse.click(bx.x, bx.y); await nap(1500);
+let list = (await ext.evaluate(() => chrome.runtime.sendMessage({ type: "ebt:list" }))).trackers; const tr = list[0];
+ok(tr && tr.history[0].value === 50, "trained, value 50");
+// age the reading 1h
+await ext.evaluate(async (id) => { const { trackers } = await chrome.storage.local.get("trackers"); const t = trackers.find((x) => x.id === id); t.history[0].ts = new Date(Date.now() - 3600e3).toISOString(); await chrome.storage.local.set({ trackers }); }, tr.id);
+await page.reload(); await nap(1200);
+const badge = () => ext.evaluate((tabId) => chrome.action.getBadgeText({ tabId }), tabId);
+ok((await badge()) === "\u21BB", "badge shows on tab load when reading is 1h old: " + JSON.stringify(await badge()));
+const mkPop = async () => { const p = await b.newPage(); await p.setViewport({ width: 340, height: 420 }); await p.evaluateOnNewDocument((tabId) => { const q = chrome.tabs.query.bind(chrome.tabs); chrome.tabs.query = async (o) => (o && o.active ? [{ id: tabId, url: "http://localhost:8941/" }] : q(o)); }, tabId); return p; };
+// open popup WITHOUT autoread to see the stale view: block autoread by making the read fail first
+present = false; amount = "$44.00"; await page.reload(); await nap(1000);
+let pop = await mkPop(); await pop.goto(`chrome-extension://${id}/src/popup/popup.html`); await nap(2500);
+const meta1 = await pop.$eval(".t-meta", (e) => e.textContent);
+ok(/Out of date: last good read 1 h ago\./.test(meta1), "failed read shows last good time, not fresh: " + meta1);
+ok(!!(await pop.$(".t-actions > button")), "Refresh is inline, not buried in More");
+await pop.keyboard.press("Tab"); await pop.keyboard.press("Tab"); await pop.keyboard.press("Tab");
+await pop.click("#refresh-all"); await nap(2500);
+console.log("report:", await pop.$eval("#refresh-report", e=>e.textContent));
+present = true; await page.reload(); await nap(1000);
+await pop.evaluate(() => [...document.querySelectorAll(".t-actions > button")].find((x) => x.textContent === "Refresh").click()); await nap(2000);
+const v2 = await pop.$eval(".t-value", (e) => e.textContent), m2 = await pop.$eval(".t-meta", (e) => e.textContent);
+ok(await pop.$eval("#refresh-report", e => e.hidden && e.children.length === 0), "Refresh all report is cleared after a successful row refresh");
+ok(v2 === "$44.00" && /just now/.test(m2) && !/out of date|failed/.test(m2), `Refresh button updated: ${v2} / ${m2}`);
+await page.bringToFront(); await nap(500);
+ok((await badge()) === "", "badge cleared after a good read");
+process.exit(process.exitCode || 0);
