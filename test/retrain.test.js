@@ -188,3 +188,24 @@ test("training without trackerId still creates a new tracker", async () => {
   assert.equal(t.selector, "new");
   assert.equal(t.anchor, "balance");
 });
+
+test("picking text that is not a number saves nothing on retrain and on a new tracker", async () => {
+  localData = {};
+  sessionData = {};
+  localData[TRACKERS_KEY] = [
+    { id: "t1", label: "Test", urlPattern: "https://example.com", selector: "old", anchor: "a", history: [{ value: 1, unit: "USD", raw: "$1", source: "training", ts: 1 }] },
+  ];
+  await callListener({ type: "ebt:arm-training", tabId: 1, label: "Test", trackerId: "t1" });
+  const bad = await callListener({ type: "ebt:picked", picked: { url: "https://example.com/p", selector: "new", text: "Sign in", anchor: "b" } });
+  assert.equal(bad.ok, false);
+  assert.match(bad.reason, /not a number/);
+  const t = localData[TRACKERS_KEY][0];
+  assert.equal(t.selector, "old");
+  assert.equal(t.anchor, "a");
+  assert.equal(t.history.length, 1);
+
+  await callListener({ type: "ebt:arm-training", tabId: 1, label: "Fresh" });
+  const bad2 = await callListener({ type: "ebt:picked", picked: { url: "https://example.com/p", selector: "x", text: "Welcome back", anchor: null } });
+  assert.equal(bad2.ok, false);
+  assert.equal(localData[TRACKERS_KEY].length, 1);
+});

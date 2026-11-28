@@ -420,6 +420,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           break;
         }
         await setSession(PENDING_KEY, null);
+        if (!parseBalance(msg.picked.text).ok) {
+          await chrome.tabs.sendMessage(pending.tabId, { type: "ebt:cancel-training" }).catch(() => {});
+          sendResponse({ ok: false, reason: "that text is not a number, nothing was saved" });
+          break;
+        }
         if (pending.trackerId) {
           const trackers = await getStore(TRACKERS_KEY, []);
           const tracker = trackers.find(t => t.id === pending.trackerId);
