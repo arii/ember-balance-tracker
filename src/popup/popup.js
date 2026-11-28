@@ -2,6 +2,7 @@
 import { summarizeTrace } from "../lib/trace.js";
 import { BUILD_ID } from "../lib/build.js";
 import { formatValue, formatMeta, titleFor, isStale, isUnverified, rowState } from "../lib/format.js";
+import { displayValue, readingView, foreignSameSiteFrames } from "../lib/display.js";
 import { describeReadFailure } from "../lib/messages.js";
 import { trackersForTab, matchesTab, readButtonLabel, autoReadSummary } from "../lib/autoread.js";
 
@@ -37,7 +38,7 @@ async function render() {
     const value = document.createElement("span");
     value.className = "t-value";
     const last = t.history?.[t.history.length - 1];
-    value.textContent = formatValue(last);
+    value.textContent = displayValue(t) ?? formatValue(last);
     if (!last) {
       value.classList.add("no-reading");
       if (reading.has(t.id)) value.textContent = "Reading...";
@@ -108,6 +109,37 @@ async function render() {
     if (onTab) menuItems.append(readBtn);
     const retrainInline = onTab && needsFix;
     if (!retrainInline) menuItems.append(retrainBtn);
+    const view = readingView(t);
+    if (view) {
+      const modeBtn = document.createElement("button");
+      modeBtn.className = "secondary";
+      const inPercent = t.display === "percent";
+      modeBtn.textContent = inPercent ? "Show amount" : "Show % left";
+      modeBtn.addEventListener("click", async () => {
+        const res = await chrome.runtime.sendMessage({ type: "ebt:set-display", id: t.id, display: inPercent ? "amount" : "percent" });
+        if (res?.ok) { status(""); return render(); }
+        status(res?.reason === "no-total"
+          ? "Percent needs a total. This page does not show one: use Set total and enter the starting amount."
+          : `Could not change the display: ${res?.reason || "unknown"}.`, true);
+      });
+      const totalIn = document.createElement("input");
+      totalIn.type = "number"; totalIn.min = "0"; totalIn.step = "any";
+      totalIn.className = "total-in";
+      totalIn.placeholder = view.total === null ? "Starting amount" : String(view.total);
+      totalIn.title = "Starting amount, used only to show percent left. Not read from the page.";
+      totalIn.setAttribute("aria-label", `Starting amount for ${t.label}`);
+      const totalBtn = document.createElement("button");
+      totalBtn.className = "secondary";
+      totalBtn.textContent = "Set total";
+      totalBtn.addEventListener("click", async () => {
+        const n = Number(totalIn.value);
+        const res = await chrome.runtime.sendMessage({ type: "ebt:set-display", id: t.id, total: totalIn.value === "" ? null : n });
+        if (res?.ok) { status(""); return render(); }
+        status("Enter a starting amount greater than zero.", true);
+      });
+      menuItems.append(modeBtn);
+      if (view.totalSource !== "page") menuItems.append(totalIn, totalBtn);
+    }
     menuItems.append(delBtn);
     menu.append(sum, menuItems);
     const inline = [];
@@ -215,6 +247,28 @@ async function showNotice() {
 
 // Read on open: the icon click granted this tab, so every tracker for it is
 // read now without another click. Other tabs stay unread until opened.
+// Same-site frames the extension cannot read (activeTab covers this page's
+// origin only). Offer to open the frame itself, which then reads like any page.
+async function showFrameNote() {
+  const note = $("#frame-note");
+  note.hidden = true;
+  const tab = await activeTab();
+  if (!tab?.id || !tab.url) return;
+  const res = await chrome.runtime.sendMessage({ type: "ebt:frames", tabId: tab.id }).catch(() => null);
+  const frames = foreignSameSiteFrames(tab.url, res?.srcs);
+  if (!frames.length) return;
+  note.textContent = "";
+  const msg = document.createElement("span");
+  msg.textContent = `This page embeds ${frames[0].host} (a subdomain of this site) in a frame Ember cannot read. If that is where the number is, open it on its own, then click the Ember icon there. `;
+  const open = document.createElement("button");
+  open.className = "secondary";
+  open.type = "button";
+  open.textContent = `Open ${frames[0].host}`;
+  open.addEventListener("click", async () => { await chrome.tabs.update(tab.id, { url: frames[0].url }); window.close(); });
+  note.append(msg, open);
+  note.hidden = false;
+}
+
 async function autoRead() {
   const tab = await activeTab();
   const { trackers } = await chrome.runtime.sendMessage({ type: "ebt:list" });
@@ -241,4 +295,5 @@ async function autoRead() {
 
 render();
 renderEmberLine();
+showFrameNote();
 showNotice().then(autoRead);

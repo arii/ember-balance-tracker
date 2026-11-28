@@ -67,3 +67,5 @@ footer { padding: 8px 14px 12px; }
   .how-it-works summary:hover { color: #d1d5db; }
   .how-it-works p { color: #9ca3af; }
 }
+.total-in { width: 140px; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; font-size: 12px; }
+#frame-note { margin: 8px 0; }

@@ -1,6 +1,7 @@
 // Service worker: storage CRUD, message routing, optional Ember fallback, trace log.
 
 import { parseBalance } from "./lib/parse.js";
+import { validateDisplay } from "./lib/display.js";
 import { BUILD_ID } from "./lib/build.js";
 import { restoreTracker } from "./lib/restore.js";
 import { localOnlySettings } from "./lib/autoread.js";
@@ -356,7 +357,7 @@ async function readTracker(trackerId, tabId, auto = false) {
       await recordFailure(trackerId, result.reason || "read-failed");
       return result;
     }
-    await recordReading(trackerId, { value: result.parsed.value, unit: result.parsed.unit, raw: result.parsed.raw, source: result.source, verified: res.verified, healed: res.healed });
+    await recordReading(trackerId, { value: result.parsed.value, unit: result.parsed.unit, raw: result.parsed.raw, source: result.source, verified: res.verified, healed: res.healed, ...(result.parsed.kind ? { kind: result.parsed.kind } : {}), ...(typeof result.parsed.total === "number" ? { total: result.parsed.total } : {}) });
     return { ok: true, source: result.source, parsed: result.parsed, verified: res.verified, healed: res.healed };
   }
 
@@ -476,6 +477,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return res;
         });
         sendResponse(result);
+        break;
+      }
+      case "ebt:set-display": {
+        const out = await enqueueStoreUpdate(async () => {
+          const trackers = await getStore(TRACKERS_KEY, []);
+          const t = trackers.find((x) => x.id === msg.id);
+          if (!t) return { ok: false, reason: "not-found" };
+          const change = {};
+          if (msg.display !== undefined) change.display = msg.display;
+          if (msg.total !== undefined) change.total = msg.total;
+          const v = validateDisplay(t, change);
+          if (!v.ok) return v;
+          Object.assign(t, change);
+          if (t.total === null) delete t.total;
+          await setStore(TRACKERS_KEY, trackers);
+          return { ok: true };
+        });
+        sendResponse(out);
+        break;
+      }
+      case "ebt:frames": {
+        const res = await chrome.scripting.executeScript({
+          target: { tabId: msg.tabId }, func: () => [...document.querySelectorAll("iframe[src]")].map((f) => f.src),
+        }).catch(() => null);
+        sendResponse({ ok: true, srcs: res?.[0]?.result || [] });
         break;
       }
       case "ebt:read-tracker":
